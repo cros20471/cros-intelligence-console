@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#090b14">
+  <title>Cros // Intelligence Console</title>
+  <link rel="icon" type="image/png" href="/app-icon.png?v=2">
+  <link rel="shortcut icon" href="/favicon.ico?v=2" sizes="any">
+  <link rel="apple-touch-icon" href="/app-icon.png?v=2">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <canvas id="particle-field" aria-hidden="true"></canvas>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <header class="top-shell">
+    <nav class="topbar" aria-label="Primary navigation">
+      <button class="brand" data-scroll="home" aria-label="Cros home">
+        <span class="brand-mark"><span>C</span></span>
+        <span class="brand-copy"><strong>CROS</strong><small>INTELLIGENCE CONSOLE</small></span>
+      </button>
+      <div class="nav-links">
+        <button class="nav-link active" data-view="home">Overview</button>
+        <button class="nav-link" data-view="pinboard">Pinboard</button>
+        <button class="nav-link" data-view="tools">Tool Index</button>
+        <button class="nav-link" data-view="security">Defense</button>
+        <button class="nav-link" data-view="guide">Guide</button>
+        <button class="nav-link" data-view="sources">Sources</button>
+      </div>
+      <div class="top-actions">
+        <button class="key-hint" id="command-button"><span>Search</span><kbd>Ctrl K</kbd></button>
+        <button class="local-state pin-mini" id="pin-jump" aria-label="Open your pinboard"><i></i><span id="pin-mini-label">0 PINS</span></button>
+        <button class="icon-button" id="settings-button" aria-label="Open appearance settings"><span class="gear-lines"></span></button>
+      </div>
+    </nav>
+  </header>
+
+  <main id="home">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <div class="eyebrow"><span></span> PRIVATE WORKSTATION / WINDOWS</div>
+        <h1 id="hero-title">One console.<br><em>Every signal.</em></h1>
+        <p>Public-source intelligence, local analysis, and defensive Windows security in one focused workspace. Nothing is uploaded unless a tool clearly tells you first.</p>
+        <div class="hero-meta">
+          <span><b id="tool-count-hero">92</b> TOOLS INDEXED</span>
+          <span><b>127.0.0.1</b> LOCAL BIND</span>
+          <span><b>READ-ONLY</b> BY DEFAULT</span>
+        </div>
+      </div>
+
+      <div class="signal-stage" id="signal-stage">
+        <div class="signal-node node-a" aria-hidden="true"></div>
+        <div class="signal-node node-b" aria-hidden="true"></div>
+        <div class="signal-node node-c" aria-hidden="true"></div>
+        <div class="wing wing-upper-left" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="wing wing-upper-right" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="wing wing-lower-left" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="wing wing-lower-right" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <button class="core-wrap" id="wing-core" type="button" aria-label="Open wing quick actions" aria-expanded="false">
+          <span class="core-orbit orbit-one"></span>
+          <span class="core-orbit orbit-two"></span>
+          <span class="core-orbit orbit-three"></span>
+          <span class="core">
+            <span class="core-mark" aria-hidden="true">
+              <i class="mark-corner mark-tl"></i><i class="mark-corner mark-tr"></i>
+              <i class="mark-corner mark-bl"></i><i class="mark-corner mark-br"></i>
+              <b>C</b>
+            </span>
+          </span>
+          <span class="core-pulse"></span>
+        </button>
+        <div class="wing-deck" id="wing-deck" aria-hidden="true">
+          <span>WING DECK</span>
+          <button data-quick="security:1">RAT Scan</button>
+          <button data-quick="security:25">Posture</button>
+          <button data-quick="security:37">Exposure</button>
+          <button id="wing-tools">All Tools</button>
+        </div>
+        <span class="stage-label stage-left">OSINT / 01</span>
+        <span class="stage-label stage-right">DEFENSE / 50</span>
+      </div>
+
+      <div class="search-zone">
+        <form class="search-shell" id="hero-search-form" autocomplete="off">
+          <span class="scan-mark" aria-hidden="true"><i></i></span>
+          <input id="hero-search" type="search" placeholder="Search a tool, target type, or security check" aria-label="Search all tools">
+          <button type="button" class="search-settings" id="search-settings" aria-label="Search filters"><span></span></button>
+          <button type="submit" class="primary-button">SEARCH <span>→</span></button>
+        </form>
+        <div class="search-options">
+          <div class="segmented" role="group" aria-label="Tool type filter">
+            <button class="segment active" data-filter="all">All</button>
+            <button class="segment" data-filter="osint">OSINT</button>
+            <button class="segment" data-filter="advanced">Advanced</button>
+            <button class="segment" data-filter="security">Security</button>
+          </div>
+          <div class="capability-pills">
+            <button data-quick="security:1"><i class="pill-dot red"></i> RAT SCAN</button>
+            <button data-quick="security:25"><i class="pill-dot violet"></i> POSTURE</button>
+            <button data-quick="security:37"><i class="pill-dot cyan"></i> EXPOSURE</button>
+            <span class="source-pill"><i></i> LOCAL-FIRST</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pinboard-section" id="pinboard" aria-labelledby="pinboard-title">
+      <div class="section-heading pinboard-heading">
+        <div><span class="section-index">00</span><h2 id="pinboard-title">Your pinboard</h2><p>Keep important links, notes, files, and folders one click away. Pins stay on this computer.</p></div>
+        <span class="pinboard-count" id="pinboard-count">0 ITEMS</span>
+      </div>
+      <form class="pin-form" id="pin-form" autocomplete="off">
+        <label><span>LABEL</span><input id="pin-title" maxlength="80" placeholder="Investigation notes"></label>
+        <label><span>LINK OR FILE PATH</span><input id="pin-target" maxlength="2048" placeholder="https://example.com or C:\\Cases"></label>
+        <label class="pin-note-field"><span>NOTE</span><input id="pin-note" maxlength="240" placeholder="Why this matters"></label>
+        <button class="primary-button" type="submit">ADD PIN <span>+</span></button>
+      </form>
+      <div class="pin-grid" id="pin-grid" aria-live="polite"></div>
+    </section>
+
+    <section class="telemetry" aria-labelledby="telemetry-title">
+      <div class="section-heading compact-heading">
+        <div><span class="section-index">01</span><h2 id="telemetry-title">Protection telemetry</h2></div>
+        <button class="text-button" id="refresh-status">REFRESH STATUS <span>↻</span></button>
+      </div>
+      <div class="telemetry-grid">
+        <article class="status-card primary-status">
+          <div class="card-top"><span class="card-label">SYSTEM POSTURE</span><span class="live-label"><i></i> LIVE</span></div>
+          <div class="posture-score"><strong id="posture-score">--</strong><span>/ 100</span></div>
+          <div class="posture-track"><i id="posture-bar"></i></div>
+          <p id="posture-copy">Reading local Windows protection signals...</p>
+          <button class="card-action" data-quick="security:25">OPEN FULL POSTURE <span>→</span></button>
+        </article>
+        <article class="status-card metric-card">
+          <div class="metric-icon">PR</div><span class="card-label">VISIBLE PROCESSES</span>
+          <strong id="process-count">--</strong><small>RUNNING NOW</small>
+        </article>
+        <article class="status-card metric-card">
+          <div class="metric-icon">NX</div><span class="card-label">TCP ACTIVITY</span>
+          <strong id="connection-count">--</strong><small id="connection-detail">LOCAL SNAPSHOT</small>
+        </article>
+        <article class="status-card metric-card">
+          <div class="metric-icon">ST</div><span class="card-label">STARTUP ITEMS</span>
+          <strong id="startup-count">--</strong><small>RUN / RUNONCE</small>
+        </article>
+        <article class="status-card machine-card">
+          <div class="card-top"><span class="card-label">ACTIVE NODE</span><span id="checked-time">WAITING</span></div>
+          <strong id="machine-name">LOCAL MACHINE</strong>
+          <p id="machine-platform">Windows workstation</p>
+          <div class="result-row"><span><i class="result-pass"></i><b id="pass-count">--</b> PASS</span><span><i class="result-review"></i><b id="review-count">--</b> REVIEW</span><span><i class="result-unknown"></i><b id="unknown-count">--</b> UNKNOWN</span></div>
+          <button class="card-action" id="posture-details">VIEW SIGNAL DETAILS <span>→</span></button>
+        </article>
+      </div>
+    </section>
+
+    <section class="tools-section" id="tools" aria-labelledby="tools-title">
+      <div class="section-heading">
+        <div><span class="section-index">02</span><h2 id="tools-title">Tool index</h2><p>Every workflow is one launch away. Use only on systems and data you are authorized to inspect.</p></div>
+        <div class="tool-controls">
+          <button class="outline-button" id="terminal-button">TERMINAL MODE</button>
+          <button class="outline-button" id="guide-button">LEARNING CENTER</button>
+        </div>
+      </div>
+      <div class="tool-filter-bar">
+        <label class="inline-search"><span></span><input id="tool-search" type="search" placeholder="Filter the complete index"></label>
+        <div class="filter-tabs" id="filter-tabs">
+          <button class="active" data-filter="all">ALL</button>
+          <button data-filter="osint">OSINT</button>
+          <button data-filter="advanced">ADVANCED</button>
+          <button data-filter="security">SECURITY</button>
+          <button data-filter="local">LOCAL</button>
+          <button data-filter="favorites">SAVED</button>
+          <button data-filter="recent">RECENT</button>
+        </div>
+        <span class="result-count" id="result-count">LOADING INDEX</span>
+      </div>
+      <div id="tool-groups" class="tool-groups" aria-live="polite"></div>
+    </section>
+
+    <section class="learning-section" id="learning" aria-labelledby="learning-title">
+      <div class="section-heading learning-heading">
+        <div><span class="section-index">03</span><h2 id="learning-title">Learning center</h2><p>Click any lesson for a clear purpose, required tools, safe workflow, result guidance, and supporting sources.</p></div>
+        <div class="learning-progress" aria-label="Lesson progress"><span>PROGRESS</span><strong id="learning-progress-count">0 / 92</strong><i><b id="learning-progress-bar"></b></i></div>
+      </div>
+
+      <div class="learning-nav" role="tablist" aria-label="Learning center sections">
+        <button class="active" role="tab" aria-selected="true" data-learning-view="tutorials">TOOL LESSONS</button>
+        <button role="tab" aria-selected="false" data-learning-view="pathways">GUIDED PATHS</button>
+        <button role="tab" aria-selected="false" data-learning-view="sources">SOURCES</button>
+      </div>
+
+      <div class="learning-view" id="tutorials-view">
+        <aside class="lesson-browser" aria-label="Tool lesson browser">
+          <label class="lesson-search"><span></span><input id="lesson-search" type="search" placeholder="Find a lesson"></label>
+          <div class="lesson-filters" id="lesson-filters">
+            <button class="active" data-lesson-filter="all">ALL</button>
+            <button data-lesson-filter="osint">OSINT</button>
+            <button data-lesson-filter="advanced">ADVANCED</button>
+            <button data-lesson-filter="security">SECURITY</button>
+          </div>
+          <div class="lesson-list" id="lesson-list" aria-label="Available lessons"></div>
+        </aside>
+        <article class="lesson-detail" id="lesson-detail" aria-live="polite">
+          <div class="lesson-empty"><span id="lesson-empty-count">92 STEP-BY-STEP LESSONS</span><h3>Choose a tool to learn it</h3><p>Every lesson explains when to use the tool, what you need, the safest workflow, and how to read the result.</p></div>
+        </article>
+      </div>
+
+      <div class="learning-view pathways-view" id="pathways-view" hidden>
+        <div class="pathway-intro"><span>REPEATABLE WORKFLOWS</span><h3>Start with a goal, not a random tool</h3><p>These paths connect the right lessons in order. Each check stays focused, explainable, and easy to repeat.</p></div>
+        <div class="pathway-grid" id="pathway-grid"></div>
+      </div>
+
+      <div class="learning-view sources-view" id="sources-view" hidden>
+        <div class="sources-toolbar">
+          <div><span>PRIMARY REFERENCES</span><h3>Know where the guidance comes from</h3><p>Official documentation, standards, public research services, and project references used throughout the lessons.</p></div>
+          <label class="lesson-search source-search"><span></span><input id="source-search" type="search" placeholder="Filter sources"></label>
+        </div>
+        <div class="source-grid" id="source-grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-brand"><span class="brand-mark small"><span>C</span></span><div><strong>CROS // INTELLIGENCE CONSOLE</strong><small>Local defensive research workstation</small></div></div>
+    <div class="footer-actions"><button data-open="folder">OPEN DATA FOLDER</button><button data-learning-footer="tutorials">LEARNING CENTER</button><button data-learning-footer="sources">SOURCES</button><button id="exit-button">CLOSE APP</button></div>
+  </footer>
+
+  <div class="command-layer" id="command-layer" hidden>
+    <button class="command-backdrop" data-close-command aria-label="Close search"></button>
+    <section class="command-panel" role="dialog" aria-modal="true" aria-labelledby="command-title">
+      <div class="command-input"><span>C</span><input id="command-search" placeholder="Type a tool name or action" autocomplete="off"><kbd>ESC</kbd></div>
+      <div class="command-meta"><span id="command-title">GLOBAL TOOL SEARCH</span><span>ENTER TO LAUNCH</span></div>
+      <div id="command-results" class="command-results"></div>
+    </section>
+  </div>
+
+  <aside class="settings-drawer" id="settings-drawer" aria-label="Appearance settings" aria-hidden="true">
+    <div class="drawer-head"><div><span>INTERFACE</span><h2>Appearance</h2></div><button class="icon-button" id="settings-close" aria-label="Close settings">×</button></div>
+    <div class="drawer-section"><label>INTERFACE COLOR</label><div class="swatches"><button data-accent="violet" class="active" aria-label="Violet"></button><button data-accent="cyan" aria-label="Cyan"></button><button data-accent="red" aria-label="Red"></button><button data-accent="green" aria-label="Green"></button><button data-accent="amber" aria-label="Amber"></button><button data-accent="ice" aria-label="Ice"></button></div><label class="custom-color">CUSTOM COLOR <input id="custom-accent" type="color" value="#8566ff" aria-label="Choose custom interface color"></label></div>
+    <div class="drawer-section setting-row"><div><label>PARTICLE FIELD</label><small>Animated local signal map</small></div><button class="toggle active" id="particle-toggle" aria-pressed="true"><i></i></button></div>
+    <div class="drawer-section setting-row"><div><label>ANIMATED WINGS</label><small>Reactive centerpiece wings</small></div><button class="toggle active" id="wing-toggle" aria-pressed="true"><i></i></button></div>
+    <div class="drawer-section setting-row"><div><label>COMPACT CARDS</label><small>Fit more tools on screen</small></div><button class="toggle" id="compact-toggle" aria-pressed="false"><i></i></button></div>
+    <div class="drawer-section range-setting"><div><label for="glow-range">GLOW STRENGTH</label><output id="glow-output">70%</output></div><input id="glow-range" type="range" min="0" max="100" value="70"></div>
+    <div class="drawer-section range-setting"><div><label for="motion-range">MOTION SPEED</label><output id="motion-output">100%</output></div><input id="motion-range" type="range" min="35" max="180" value="100"></div>
+    <div class="drawer-section"><label>CARD SHAPE</label><div class="shape-options" role="group" aria-label="Card corner shape"><button data-shape="soft" class="active">SOFT</button><button data-shape="sharp">SHARP</button><button data-shape="round">ROUND</button></div></div>
+    <div class="drawer-section"><label>TOOL GRID</label><small>Choose the desktop card density. Smaller screens stay responsive.</small><div class="column-options" role="group" aria-label="Tool card columns"><button data-columns="auto" class="active">AUTO</button><button data-columns="3">3 COL</button><button data-columns="4">4 COL</button><button data-columns="5">5 COL</button></div></div>
+    <div class="drawer-section"><button class="reset-appearance" id="reset-appearance">RESET APPEARANCE</button></div>
+  </aside>
+
+  <div class="detail-layer" id="detail-layer" hidden>
+    <button class="detail-backdrop" data-close-detail aria-label="Close status details"></button>
+    <section class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <div class="drawer-head"><div><span>LIVE WINDOWS CHECK</span><h2 id="detail-title">Protection signals</h2></div><button class="icon-button" data-close-detail aria-label="Close details">×</button></div>
+      <div id="posture-list" class="posture-list"></div>
+    </section>
+  </div>
+
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

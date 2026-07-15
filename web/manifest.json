@@ -1,0 +1,17 @@
+{
+  "name": "Cros Intelligence Console",
+  "short_name": "Cros",
+  "description": "Local OSINT and defensive security workspace",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090b14",
+  "theme_color": "#090b14",
+  "icons": [
+    {
+      "src": "/app-icon.png?v=2",
+      "sizes": "1536x1536",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
