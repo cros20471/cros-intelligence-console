@@ -19,10 +19,13 @@ The console opens as a local web app. It listens only on `127.0.0.1`, so other c
 If Python and Git are already installed, paste this whole block into PowerShell:
 
 ```powershell
-git clone https://github.com/cros20471/cros-intelligence-console.git
-cd cros-intelligence-console
-python -m pip install -r requirements.txt
-.\start_osint_tool.bat
+$url = "https://github.com/cros20471/cros-intelligence-console.git"
+$here = (Get-Location).Path
+$repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here "start_osint_tool.bat"))) { $here } else { Join-Path $here "cros-intelligence-console" }
+if (Test-Path (Join-Path $repo ".git")) { git -C $repo pull --ff-only } elseif (-not (Test-Path (Join-Path $repo "start_osint_tool.bat"))) { git clone $url $repo }
+Set-Location $repo
+if (Get-Command py -ErrorAction SilentlyContinue) { py -3 -m pip install -r requirements.txt } else { python -m pip install -r requirements.txt }
+Start-Process -FilePath (Join-Path $repo "start_osint_tool.bat") -WorkingDirectory $repo
 ```
 
 If `python` is not recognized, replace the third line with `py -3 -m pip install -r requirements.txt`. If `git` is not recognized, close and reopen PowerShell after installing Git.
