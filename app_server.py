@@ -803,10 +803,6 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             self.json_response(read_workspace_state())
             return
-        if route == "/api/clear-local-data":
-            clear_local_data()
-            self.json_response({"ok": True})
-            return
         if route == "/api/session":
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
@@ -913,6 +909,13 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/workspace":
             try:
                 self.json_response(write_workspace_state(body))
+            except OSError as exc:
+                self.json_response({"error": str(exc)}, 500)
+            return
+        if route == "/api/clear-local-data":
+            try:
+                clear_local_data()
+                self.json_response({"ok": True})
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 500)
             return
