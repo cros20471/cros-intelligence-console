@@ -47,6 +47,11 @@ APP_ICON_HANDLES: list[int] = []
 TOOL_SESSIONS: dict[str, dict] = {}
 TOOL_SESSIONS_LOCK = threading.Lock()
 ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+# Match the stable platform + URL portion; terminal status glyph encoding varies.
+BLACKBIRD_FOUND_RE = re.compile(r"\[([^\]\r\n]{1,100})\]\s+(https?://[^\s\r\n]+)")
+BLACKBIRD_SOCIAL_NAMES: frozenset[str] | None = None
+
+
 def touch() -> None:
     global LAST_SEEN
     with LAST_SEEN_LOCK:
@@ -77,6 +82,70 @@ def write_learning_progress(values: object) -> list[str]:
 
 def _short_text(value: object, limit: int) -> str:
     return str(value or "").strip()[:limit]
+
+
+def blackbird_social_names() -> frozenset[str]:
+    global BLACKBIRD_SOCIAL_NAMES
+    if BLACKBIRD_SOCIAL_NAMES is not None:
+        return BLACKBIRD_SOCIAL_NAMES
+    names: set[str] = set()
+    data_file = APP_DIR / "blackbird" / "data" / "wmn-data.json"
+    try:
+        value = json.loads(data_file.read_text(encoding="utf-8"))
+        for site in value.get("sites", []) if isinstance(value, dict) else []:
+            if isinstance(site, dict) and str(site.get("cat", "")).lower() == "social":
+                name = _short_text(site.get("name"), 100).lower()
+                if name:
+                    names.add(name)
+    except (OSError, json.JSONDecodeError):
+        pass
+    BLACKBIRD_SOCIAL_NAMES = frozenset(names)
+    return BLACKBIRD_SOCIAL_NAMES
+
+
+def blackbird_social_results(output: str, username: str) -> list[dict[str, str]]:
+    if not username:
+        return []
+    results = []
+    seen = set()
+    for match in BLACKBIRD_FOUND_RE.finditer(output):
+        platform = _short_text(match.group(1), 100)
+        url = _short_text(match.group(2).rstrip(".,;)]}"), 2048)
+        try:
+            parsed = urllib.parse.urlsplit(url)
+        except ValueError:
+            continue
+        # Blackbird's site data changes independently of Cros. Do not require
+        # a platform to exist in the bundled social-name cache: new/renamed
+        # sites such as Roblox must still receive the in-app map action.
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            continue
+        key = (platform.lower(), url.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append({"platform": platform, "url": url, "username": username})
+        if len(results) >= 200:
+            break
+    # Some Blackbird versions stream only the checked URL (without a
+    # [Platform] label). Recover those live results from the hostname so the
+    # in-app result card and map action are still available.
+    known_urls = {item["url"].lower() for item in results}
+    for raw_url in re.findall(r"https?://[^\s\r\n]+", output):
+        url = _short_text(raw_url.rstrip(".,;)]}"), 2048)
+        try:
+            parsed = urllib.parse.urlsplit(url)
+        except ValueError:
+            continue
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or url.lower() in known_urls:
+            continue
+        host_parts = parsed.hostname.lower().split(".")
+        platform = host_parts[-2].replace("-", " ").title() if len(host_parts) >= 2 else parsed.hostname
+        results.append({"platform": platform, "url": url, "username": username})
+        known_urls.add(url.lower())
+        if len(results) >= 200:
+            break
+    return results
 
 
 def clean_workspace_state(value: object) -> dict:
@@ -513,7 +582,8 @@ def start_tool_session(category: str, tool_id: str, *, username: str = "") -> di
             raise ValueError("Close or stop an existing tool session first")
 
     env = os.environ.copy()
-    env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "CROS_EMBEDDED": "1"})
+    env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1",
+                "CROS_EMBEDDED": "1", "COLUMNS": "300"})
     if username:
         env["CROS_USERNAME"] = username
         env["CROS_REQUIRE_BLACKBIRD"] = "1"
@@ -526,7 +596,7 @@ def start_tool_session(category: str, tool_id: str, *, username: str = "") -> di
     session_id = uuid.uuid4().hex
     session = {"id": session_id, "category": category, "tool_id": tool_id, "process": process,
                "output": "", "base_offset": 0, "started": time.monotonic(), "ended": None,
-               "returncode": None, "stage": "Starting local tool"}
+               "returncode": None, "stage": "Starting local tool", "username": username}
     with TOOL_SESSIONS_LOCK:
         TOOL_SESSIONS[session_id] = session
     threading.Thread(target=_read_tool_session, args=(session_id,), daemon=True).start()
@@ -548,11 +618,15 @@ def tool_session_payload(session_id: str, offset: int = 0) -> dict:
         elapsed = ((session["ended"] or time.monotonic()) - session["started"])
         returncode = session["returncode"] if session["returncode"] is not None else process.poll()
         stage = session["stage"]
+        full_output = session["output"]
+        username = session.get("username", "")
+    social_results = blackbird_social_results(full_output, username)
     if int(offset) < base_offset:
         output = "[Earlier output was trimmed]\n" + output
     return {"id": session_id, "output": output, "next_offset": next_offset, "done": done,
             "returncode": returncode, "elapsed_ms": int(elapsed * 1000),
-            "stage": (("Complete" if returncode == 0 else "Stopped with an error") if done else stage)[:180]}
+            "stage": (("Complete" if returncode == 0 else "Stopped with an error") if done else stage)[:180],
+            "social_results": social_results}
 
 
 def send_tool_session_input(session_id: str, value: object) -> None:

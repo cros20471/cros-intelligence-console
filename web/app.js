@@ -53,6 +53,8 @@
     sessionOffset: 0,
     sessionPoll: 0,
     sessionDone: true,
+    sessionSocialResults: [],
+    sessionSocialSignature: "",
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -569,6 +571,76 @@
     $("#session-time").textContent = formatSessionTime(payload.elapsed_ms || 0);
   }
 
+  function graphPosition(index) {
+    const angle = index * 2.399;
+    const radius = index ? Math.min(205, 82 + index * 15) : 0;
+    return {
+      x: Math.round(500 + Math.cos(angle) * radius),
+      y: Math.round(210 + Math.sin(angle) * Math.min(radius, 160)),
+    };
+  }
+
+  function mappedSocialNode(account) {
+    return state.graph.nodes.find(node => node.type === "account" && node.note?.includes(`Blackbird result: ${account.url}`));
+  }
+
+  function addSocialToMap(account) {
+    if (!account?.url || !account?.platform || !account?.username) return;
+    const username = String(account.username).replace(/^@/, "").slice(0, 64);
+    const leadMarker = `Blackbird username lead: @${username}`;
+    let lead = state.graph.nodes.find(node => node.note?.includes(leadMarker));
+    if (!lead) {
+      const position = graphPosition(state.graph.nodes.length);
+      lead = {
+        id: crypto.randomUUID ? crypto.randomUUID() : `node-${Date.now()}-${Math.random()}`,
+        label: `@${username}`.slice(0, 80), type: "account", note: `${leadMarker}.`, ...position,
+      };
+      state.graph.nodes.push(lead);
+    }
+
+    let social = mappedSocialNode(account);
+    if (!social) {
+      const position = graphPosition(state.graph.nodes.length);
+      social = {
+        id: crypto.randomUUID ? crypto.randomUUID() : `node-${Date.now()}-${Math.random()}`,
+        label: `${account.platform} · @${username}`.slice(0, 80), type: "account",
+        note: `Blackbird result: ${String(account.url).slice(0, 240)}. Verify profile details before linking identities.`,
+        ...position,
+      };
+      state.graph.nodes.push(social);
+    }
+    if (!state.graph.edges.some(edge => edge.source === lead.id && edge.target === social.id)) {
+      state.graph.edges.push({
+        id: crypto.randomUUID ? crypto.randomUUID() : `edge-${Date.now()}-${Math.random()}`,
+        source: lead.id, target: social.id, label: "Blackbird result",
+      });
+    }
+    persistWorkspace();
+    renderGraph();
+    renderSessionSocialResults();
+    toast("Added to investigation map", `${account.platform} was connected to @${username}.`);
+  }
+
+  function renderSessionSocialResults() {
+    const section = $("#session-socials");
+    const root = $("#session-social-list");
+    section.hidden = !state.sessionSocialResults.length;
+    root.replaceChildren();
+    state.sessionSocialResults.forEach(account => {
+      const row = document.createElement("div"); row.className = "session-social-row";
+      const copy = document.createElement("div");
+      const name = document.createElement("strong"); name.textContent = account.platform;
+      const url = document.createElement("span"); url.textContent = account.url;
+      copy.append(name, url);
+      const button = document.createElement("button"); button.type = "button";
+      const mapped = Boolean(mappedSocialNode(account));
+      button.textContent = mapped ? "ADDED" : "ADD TO MAP";
+      button.disabled = mapped;
+      button.addEventListener("click", () => addSocialToMap(account));
+      row.append(copy, button); root.append(row);
+    });
+  }
+
   async function pollToolSession() {
     if (!state.sessionId) return;
     const sessionId = state.sessionId;
@@ -583,6 +655,14 @@
       }
       state.sessionOffset = Number(payload.next_offset || state.sessionOffset);
       state.sessionDone = Boolean(payload.done);
+      if (Array.isArray(payload.social_results)) {
+        const signature = JSON.stringify(payload.social_results);
+        if (signature !== state.sessionSocialSignature) {
+          state.sessionSocialSignature = signature;
+          state.sessionSocialResults = payload.social_results;
+          renderSessionSocialResults();
+        }
+      }
       updateSessionProgress(payload);
       if (!state.sessionDone) state.sessionPoll = setTimeout(pollToolSession, 350);
     } catch (error) {
@@ -613,6 +693,9 @@
     state.sessionId = "";
     state.sessionOffset = 0;
     state.sessionDone = false;
+    state.sessionSocialResults = [];
+    state.sessionSocialSignature = "";
+    renderSessionSocialResults();
     updateSessionProgress({ done: false, stage: "Starting local tool", elapsed_ms: 0 });
     try {
       const payload = await api("/api/session/start", {
@@ -853,16 +936,13 @@
     event.preventDefault();
     const label = $("#node-label").value.trim();
     if (!label) return;
-    const index = state.graph.nodes.length;
-    const angle = index * 2.399;
-    const radius = index ? Math.min(205, 82 + index * 15) : 0;
+    const position = graphPosition(state.graph.nodes.length);
     state.graph.nodes.push({
       id: crypto.randomUUID ? crypto.randomUUID() : `node-${Date.now()}-${Math.random()}`,
       label,
       type: $("#node-type").value,
       note: $("#node-note").value.trim(),
-      x: Math.round(500 + Math.cos(angle) * radius),
-      y: Math.round(210 + Math.sin(angle) * Math.min(radius, 160)),
+      ...position,
     });
     event.currentTarget.reset();
     persistWorkspace();
@@ -1512,6 +1592,7 @@
     $("#image-scan-mode").addEventListener("change", renderImageResult);
     $("#session-input-form").addEventListener("submit", sendSessionInput);
     $("#session-stop").addEventListener("click", () => stopActiveSession(true));
+    $("#session-view-map").addEventListener("click", () => openWorkspace("map"));
     $$('[data-workspace-tab]').forEach(button => button.addEventListener("click", () => setWorkspaceView(button.dataset.workspaceTab)));
     $("#workspace-close").addEventListener("click", closeWorkspace);
     $("#workspace-restore").addEventListener("click", () => openWorkspace());

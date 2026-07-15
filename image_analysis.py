@@ -12,6 +12,7 @@ from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent
 ENGINE_DEPS_DIR = APP_DIR / "engine_deps"
+ENGINE_RUNTIME_DIR = ENGINE_DEPS_DIR / sys.implementation.cache_tag
 MAX_IMAGE_BYTES = 50 * 1024 * 1024
 MAX_IMAGE_PIXELS = 100_000_000
 
@@ -89,12 +90,18 @@ def analyze_image_file(path_value: str | Path, *, include_thumbnail: bool = Fals
     if size > MAX_IMAGE_BYTES:
         raise ValueError("Choose an image smaller than 50 MB.")
 
-    if str(ENGINE_DEPS_DIR) not in sys.path:
-        sys.path.insert(0, str(ENGINE_DEPS_DIR))
     try:
         from PIL import ExifTags, Image, ImageFilter, ImageOps, ImageStat
     except ImportError as exc:
-        raise RuntimeError("Local image support is unavailable.") from exc
+        # Bundled compiled wheels must match the active Python ABI. Never add
+        # the legacy shared dependency folder, which can contain a broken
+        # _imaging extension from another Python version.
+        if str(ENGINE_RUNTIME_DIR) not in sys.path and ENGINE_RUNTIME_DIR.is_dir():
+            sys.path.insert(0, str(ENGINE_RUNTIME_DIR))
+        try:
+            from PIL import ExifTags, Image, ImageFilter, ImageOps, ImageStat
+        except ImportError as runtime_exc:
+            raise RuntimeError("Local image support is unavailable. Install Pillow for this Python version, then retry.") from runtime_exc
 
     digest = _sha256(path)
     metadata: list[dict[str, str]] = []

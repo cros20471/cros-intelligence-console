@@ -40,6 +40,39 @@ APP_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = APP_DIR / "pydeps"
 ENGINE_DEPS_DIR = APP_DIR / "engine_deps"
 
+
+def engine_runtime_dir() -> Path:
+    """Keep compiled Blackbird packages isolated by the active Python ABI."""
+    return ENGINE_DEPS_DIR / sys.implementation.cache_tag
+
+
+def engine_dependency_path() -> Path:
+    """Return only the ABI-specific dependency directory.
+
+    Never fall back to ``engine_deps`` itself: compiled packages such as Pillow
+    and ReportLab are Python-version-specific, and the old shared folder can
+    otherwise make Blackbird import a broken _imaging extension.
+    """
+    return engine_runtime_dir()
+
+
+def validate_engine_dependencies(path: Path) -> str | None:
+    """Explain a missing or incompatible bundled engine environment."""
+    if not path.is_dir():
+        return f"Blackbird dependencies are not installed for {sys.version.split()[0]}. Run Account Engine Setup."
+    pillow = path / "PIL"
+    if not (pillow / "__init__.py").is_file():
+        return "Blackbird dependencies are incomplete. Run Account Engine Setup to reinstall Pillow and ReportLab."
+    try:
+        probe = subprocess.run([sys.executable, "-c", "from PIL import Image; from reportlab.pdfgen import canvas"],
+                               cwd=str(APP_DIR), env={**os.environ, "PYTHONPATH": str(path)},
+                               capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"Could not validate Blackbird dependencies: {exc}"
+    if probe.returncode:
+        return "Blackbird dependencies are incompatible with this Python version. Run Account Engine Setup to reinstall them."
+    return None
+
 # The console runs with the Python standard library. Rich/Requests are optional
 # enhancements, so a locked package folder can never prevent the tool opening.
 try:
@@ -286,9 +319,16 @@ def run_blackbird(kind: str, values: list[str], *, permute: bool = False) -> Non
     try:
         child_env = os.environ.copy()
         existing_path = child_env.get("PYTHONPATH", "")
-        child_env["PYTHONPATH"] = str(ENGINE_DEPS_DIR) + (os.pathsep + existing_path if existing_path else "")
+        dependency_dir = engine_dependency_path()
+        dependency_error = validate_engine_dependencies(dependency_dir)
+        if dependency_error:
+            console.print(f"[red]{dependency_error}[/]")
+            pause()
+            return
+        child_env["PYTHONPATH"] = str(dependency_dir) + (os.pathsep + existing_path if existing_path else "")
         child_env["PYTHONUTF8"] = "1"
         child_env["PYTHONIOENCODING"] = "utf-8"
+        child_env["COLUMNS"] = "300"
         if embedded:
             console.print("[cyan]Blackbird is checking live public sources. Results will stream here as they arrive.[/]")
             process = subprocess.Popen(command, cwd=script.parent, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -426,9 +466,10 @@ def wayback() -> None:
 
 
 def install_blackbird_requirements(requirements: Path) -> int:
-    ENGINE_DEPS_DIR.mkdir(parents=True, exist_ok=True)
+    target = engine_runtime_dir()
+    target.mkdir(parents=True, exist_ok=True)
     command = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
-               "--target", str(ENGINE_DEPS_DIR), "--upgrade"]
+               "--target", str(target), "--upgrade"]
     if sys.version_info >= (3, 14):
         packages = []
         try:
@@ -470,7 +511,8 @@ def blackbird_setup() -> None:
 def diagnostics() -> None:
     script = find_blackbird()
     rows = [("Python", sys.version.split()[0]), ("Account engine", str(script) if script else "Not found"),
-            ("Git", shutil.which("git") or "Not found"), ("Settings", str(SETTINGS_FILE))]
+            ("Engine packages", str(engine_runtime_dir())), ("Git", shutil.which("git") or "Not found"),
+            ("Settings", str(SETTINGS_FILE))]
     table = Table(title="Diagnostics"); table.add_column("Item"); table.add_column("Value")
     for row in rows: table.add_row(*row)
     console.print(table)

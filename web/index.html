@@ -306,6 +306,11 @@
         <div class="session-progress" id="session-progress" role="progressbar" aria-label="Tool progress" aria-valuetext="Ready"><i></i><b></b></div>
         <div class="session-meta"><span id="session-stage">Choose any tool to start</span><span id="session-time">0.0s</span></div>
         <pre class="session-output" id="session-output" aria-live="polite">Tool output will appear here in real time.</pre>
+        <section class="session-socials" id="session-socials" hidden aria-labelledby="session-socials-title">
+          <header><div><span>BLACKBIRD LIVE RETURNS</span><h4 id="session-socials-title">Found social accounts</h4></div><button type="button" id="session-view-map">VIEW MAP</button></header>
+          <div id="session-social-list"></div>
+          <small>Blackbird detected these public account pages. Verify profile details before treating separate accounts as the same person.</small>
+        </section>
         <form class="session-input-form" id="session-input-form" autocomplete="off">
           <label><span>REPLY TO TOOL</span><input id="session-input" placeholder="Type an answer when the tool asks" maxlength="4096"></label>
           <button type="submit" class="primary-button">SEND</button>
