@@ -43,6 +43,9 @@
     favoriteTools: new Set(loadStoredArray("cros-favorite-tools")),
     recentTools: loadStoredArray("cros-recent-tools").slice(0, 12),
     pins: loadStoredPins(),
+    graph: { nodes: [], edges: [] },
+    selectedNode: "",
+    imageResult: null,
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -142,9 +145,52 @@
     toolRenderFrame = requestAnimationFrame(renderTools);
   }
 
-  function saveToolPreferences() {
+  function workspacePayload() {
+    return {
+      pins: state.pins,
+      favorite_tools: [...state.favoriteTools],
+      recent_tools: state.recentTools,
+      graph: state.graph,
+    };
+  }
+
+  let workspaceSaveTimer = 0;
+  function persistWorkspace() {
     localStorage.setItem("cros-favorite-tools", JSON.stringify([...state.favoriteTools]));
     localStorage.setItem("cros-recent-tools", JSON.stringify(state.recentTools));
+    localStorage.setItem("cros-pinboard", JSON.stringify(state.pins));
+    clearTimeout(workspaceSaveTimer);
+    workspaceSaveTimer = setTimeout(() => {
+      api("/api/workspace", { method: "POST", body: JSON.stringify(workspacePayload()) })
+        .catch(error => toast("Workspace not saved", error.message, true));
+    }, 120);
+  }
+
+  async function loadWorkspace() {
+    const localFavorites = [...state.favoriteTools];
+    const localRecents = [...state.recentTools];
+    const localPins = [...state.pins];
+    const payload = await api("/api/workspace");
+    const serverEmpty = !(payload.pins || []).length
+      && !(payload.favorite_tools || []).length
+      && !(payload.recent_tools || []).length
+      && !(payload.graph?.nodes || []).length;
+    const migrateLocal = serverEmpty && (localFavorites.length || localRecents.length || localPins.length);
+    state.favoriteTools = new Set(migrateLocal ? localFavorites : (payload.favorite_tools || []));
+    state.recentTools = (migrateLocal ? localRecents : (payload.recent_tools || [])).slice(0, 12);
+    state.pins = (migrateLocal ? localPins : (payload.pins || [])).slice(0, 100);
+    state.graph = {
+      nodes: Array.isArray(payload.graph?.nodes) ? payload.graph.nodes : [],
+      edges: Array.isArray(payload.graph?.edges) ? payload.graph.edges : [],
+    };
+    if (migrateLocal) persistWorkspace();
+    renderPins();
+    renderPinnedTools();
+    renderGraph();
+  }
+
+  function saveToolPreferences() {
+    persistWorkspace();
   }
 
   function toggleFavorite(tool) {
@@ -153,7 +199,8 @@
     else state.favoriteTools.add(tool.key);
     saveToolPreferences();
     renderTools();
-    toast(saved ? "Removed from saved" : "Tool saved", `${tool.name} ${saved ? "was removed from" : "was added to"} your saved tools.`);
+    renderPinnedTools();
+    toast(saved ? "Tool unpinned" : "Tool pinned", `${tool.name} ${saved ? "was removed from" : "is ready in"} your workspace.`);
   }
 
   function recordRecent(tool) {
@@ -176,9 +223,9 @@
     const save = document.createElement("button");
     const saved = state.favoriteTools.has(tool.key);
     save.className = `tool-save${saved ? " active" : ""}`;
-    save.textContent = saved ? "SAVED" : "SAVE";
+    save.textContent = saved ? "PINNED" : "PIN";
     save.setAttribute("aria-pressed", String(saved));
-    save.setAttribute("aria-label", `${saved ? "Remove" : "Add"} ${tool.name} ${saved ? "from" : "to"} saved tools`);
+    save.setAttribute("aria-label", `${saved ? "Remove" : "Add"} ${tool.name} ${saved ? "from" : "to"} pinned tools`);
     const meta = document.createElement("span");
     meta.className = "tool-card-meta";
     meta.append(access, save);
@@ -207,6 +254,21 @@
   async function launchTool(toolOrKey) {
     const tool = typeof toolOrKey === "string" ? state.tools.find(item => item.key === toolOrKey) : toolOrKey;
     if (!tool) return;
+    if (["osint:1", "osint:2", "osint:3"].includes(tool.key)) {
+      recordRecent(tool);
+      $("#investigation-workbench").scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => $("#name-search-query").focus(), 450);
+      toast("Opened in-app name search", "Enter a public name, username, or email to begin.");
+      closeCommand();
+      return;
+    }
+    if (tool.key === "osint:15") {
+      recordRecent(tool);
+      $("#investigation-workbench").scrollIntoView({ behavior: "smooth", block: "start" });
+      toast("Opened local image investigator", "Choose a photo for local analysis.");
+      closeCommand();
+      return;
+    }
     if (tool.key === "advanced:20" || tool.key === "security:24") {
       recordRecent(tool);
       openLearning(tool.key === "security:24" ? "security:1" : "osint:1", "tutorials");
@@ -236,6 +298,7 @@
     const lessonEmptyCount = $("#lesson-empty-count");
     if (lessonEmptyCount) lessonEmptyCount.textContent = `${payload.count || state.tools.length} STEP-BY-STEP LESSONS`;
     renderTools();
+    renderPinnedTools();
   }
 
   async function loadLearning() {
@@ -250,7 +313,7 @@
   }
 
   function savePins() {
-    localStorage.setItem("cros-pinboard", JSON.stringify(state.pins));
+    persistWorkspace();
     renderPins();
   }
 
@@ -265,8 +328,8 @@
     const root = $("#pin-grid");
     root.replaceChildren();
     const pins = [...state.pins].sort((a, b) => Number(Boolean(b.priority)) - Number(Boolean(a.priority)) || Number(b.created || 0) - Number(a.created || 0));
-    $("#pinboard-count").textContent = `${pins.length} ${pins.length === 1 ? "ITEM" : "ITEMS"}`;
-    $("#pin-mini-label").textContent = `${pins.length} ${pins.length === 1 ? "PIN" : "PINS"}`;
+    $("#pinboard-count").textContent = `${state.favoriteTools.size} TOOLS / ${pins.length} NOTES`;
+    $("#pin-mini-label").textContent = `${state.favoriteTools.size} TOOLS`;
     if (!pins.length) {
       const empty = document.createElement("div");
       empty.className = "pin-empty";
@@ -313,6 +376,43 @@
     });
   }
 
+  function renderPinnedTools() {
+    const root = $("#pinned-tool-grid");
+    if (!root) return;
+    root.replaceChildren();
+    const tools = [...state.favoriteTools].map(toolByKey).filter(Boolean);
+    if (!tools.length) {
+      const empty = document.createElement("div");
+      empty.className = "pinned-tool-empty";
+      empty.innerHTML = "<strong>No tools pinned yet</strong><span>Browse the index and select PIN on any tool.</span>";
+      root.append(empty);
+    }
+    tools.forEach(tool => {
+      const card = document.createElement("article");
+      card.className = "pinned-tool-card";
+      const code = document.createElement("span");
+      code.textContent = codeFor(tool);
+      const title = document.createElement("h3");
+      title.textContent = tool.name;
+      const copy = document.createElement("p");
+      copy.textContent = tool.description;
+      const actions = document.createElement("div");
+      const launch = document.createElement("button");
+      launch.type = "button"; launch.className = "primary-button"; launch.textContent = "LAUNCH";
+      const learn = document.createElement("button");
+      learn.type = "button"; learn.textContent = "LEARN";
+      const remove = document.createElement("button");
+      remove.type = "button"; remove.textContent = "UNPIN";
+      launch.addEventListener("click", () => launchTool(tool));
+      learn.addEventListener("click", () => openLearning(tool.key, "tutorials"));
+      remove.addEventListener("click", () => toggleFavorite(tool));
+      actions.append(launch, learn, remove);
+      card.append(code, title, copy, actions);
+      root.append(card);
+    });
+    renderPins();
+  }
+
   function addPin(event) {
     event.preventDefault();
     const title = $("#pin-title").value.trim();
@@ -344,6 +444,293 @@
       try { await api("/api/open-pinned", { method: "POST", body: JSON.stringify({ target: pin.target }) }); }
       catch (error) { toast("Could not open pin", error.message, true); }
     }
+  }
+
+  async function openResearchUrl(url) {
+    try { await api("/api/open-url", { method: "POST", body: JSON.stringify({ url }) }); }
+    catch (error) { toast("Could not open research page", error.message, true); }
+  }
+
+  function researchButton(item) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "research-link";
+    button.innerHTML = `<span>${item.name}</span><b>OPEN ↗</b>`;
+    button.addEventListener("click", () => openResearchUrl(item.url));
+    return button;
+  }
+
+  async function searchNames(event) {
+    event.preventDefault();
+    const query = $("#name-search-query").value.trim();
+    if (!query) return;
+    $("#name-search-loading").hidden = false;
+    try {
+      const result = await api("/api/name-search", { method: "POST", body: JSON.stringify({ query }) });
+      const root = $("#name-results");
+      root.replaceChildren();
+      if (result.variants?.length) {
+        const block = document.createElement("section");
+        block.className = "result-block";
+        const heading = document.createElement("h4"); heading.textContent = "FOCUSED USERNAME VARIATIONS";
+        const chips = document.createElement("div"); chips.className = "variant-chips";
+        result.variants.forEach(value => { const chip = document.createElement("span"); chip.textContent = value; chips.append(chip); });
+        block.append(heading, chips); root.append(block);
+      }
+      if (result.profiles?.length) {
+        const block = document.createElement("section"); block.className = "result-block";
+        const heading = document.createElement("h4"); heading.textContent = "PUBLIC PROFILE CANDIDATES";
+        const grid = document.createElement("div"); grid.className = "research-link-grid";
+        result.profiles.forEach(item => grid.append(researchButton(item)));
+        block.append(heading, grid); root.append(block);
+      }
+      const searchBlock = document.createElement("section"); searchBlock.className = "result-block";
+      const searchHeading = document.createElement("h4"); searchHeading.textContent = "FOCUSED WEB SEARCHES";
+      const searchGrid = document.createElement("div"); searchGrid.className = "research-link-grid";
+      (result.searches || []).forEach(item => searchGrid.append(researchButton(item)));
+      const notice = document.createElement("p"); notice.className = "result-notice"; notice.textContent = result.notice;
+      searchBlock.append(searchHeading, searchGrid); root.append(searchBlock, notice);
+    } catch (error) {
+      toast("Name search unavailable", error.message, true);
+    } finally {
+      $("#name-search-loading").hidden = true;
+    }
+  }
+
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+      reader.onerror = () => reject(new Error("Windows could not read that image"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function fact(label, value) {
+    const item = document.createElement("div");
+    const key = document.createElement("span"); key.textContent = label;
+    const data = document.createElement("strong"); data.textContent = String(value);
+    item.append(key, data); return item;
+  }
+
+  function renderImageResult() {
+    const result = state.imageResult;
+    if (!result) return;
+    const mode = $("#image-scan-mode").value;
+    const root = $("#image-results"); root.replaceChildren();
+    const preview = document.createElement("div"); preview.className = "image-preview";
+    const image = document.createElement("img"); image.src = result.thumbnail; image.alt = `Local preview of ${result.file_name}`;
+    preview.append(image);
+    if (mode !== "location") (result.face_boxes || []).forEach(box => {
+      const marker = document.createElement("span"); marker.className = "face-box";
+      marker.style.left = `${box.x * 100}%`; marker.style.top = `${box.y * 100}%`;
+      marker.style.width = `${box.width * 100}%`; marker.style.height = `${box.height * 100}%`;
+      preview.append(marker);
+    });
+    const summary = document.createElement("div"); summary.className = "image-summary";
+    const facts = document.createElement("div"); facts.className = "image-facts";
+    facts.append(fact("FORMAT", result.format), fact("DIMENSIONS", `${result.width} × ${result.height}`), fact("SIZE", `${(result.size_bytes / 1048576).toFixed(2)} MB`));
+    if (mode !== "location") facts.append(fact("FACE REGIONS", result.face_engine === "unavailable" ? "Detector unavailable" : result.face_count));
+    if (mode !== "face") facts.append(fact("GPS", result.gps ? `${result.gps.latitude}, ${result.gps.longitude}` : "Not embedded"), fact("SHA-256", result.sha256));
+    summary.append(facts);
+    if (mode !== "face") {
+      const location = document.createElement("p"); location.className = "analysis-note"; location.textContent = result.location_note; summary.append(location);
+      if (result.metadata?.length) {
+        const metadata = document.createElement("div"); metadata.className = "metadata-list";
+        result.metadata.forEach(item => metadata.append(fact(item.label.toUpperCase(), item.value)));
+        summary.append(metadata);
+      }
+    }
+    if (mode !== "location") { const faceNote = document.createElement("p"); faceNote.className = "analysis-note"; faceNote.textContent = result.face_note; summary.append(faceNote); }
+    const reverse = document.createElement("div"); reverse.className = "reverse-searches";
+    const reverseTitle = document.createElement("h4"); reverseTitle.textContent = "OPTIONAL REVERSE-IMAGE SEARCH";
+    const reverseNote = document.createElement("p"); reverseNote.textContent = "These providers are third parties. Opening one does not upload this file automatically; choose the image there only if you accept that provider’s privacy terms.";
+    const reverseLinks = document.createElement("div"); reverseLinks.className = "research-link-grid";
+    [
+      { name: "Google Lens", url: "https://lens.google.com/upload" },
+      { name: "Bing Visual Search", url: "https://www.bing.com/visualsearch" },
+      { name: "Yandex Images", url: "https://yandex.com/images/" },
+    ].forEach(item => reverseLinks.append(researchButton(item)));
+    reverse.append(reverseTitle, reverseNote, reverseLinks);
+    root.append(preview, summary, reverse);
+  }
+
+  async function scanImage(event) {
+    event.preventDefault();
+    const file = $("#image-file").files[0];
+    if (!file) return;
+    if (file.size > 10_000_000) { toast("Image is too large", "Choose a file smaller than 10 MB.", true); return; }
+    $("#image-scan-loading").hidden = false;
+    try {
+      const data = await readFileAsBase64(file);
+      state.imageResult = await api("/api/image-analyze", { method: "POST", body: JSON.stringify({ name: file.name, data }) });
+      renderImageResult();
+    } catch (error) {
+      toast("Image scan failed", error.message, true);
+    } finally {
+      $("#image-scan-loading").hidden = true;
+    }
+  }
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function svgElement(name, attributes = {}) {
+    const element = document.createElementNS(SVG_NS, name);
+    Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
+    return element;
+  }
+
+  function graphPoint(event) {
+    const svg = $("#neural-map");
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    return point.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  function updateNodeSelectors() {
+    ["#edge-source", "#edge-target"].forEach(selector => {
+      const select = $(selector);
+      const current = select.value;
+      select.replaceChildren(new Option("Choose node", ""));
+      state.graph.nodes.forEach(node => select.add(new Option(node.label, node.id)));
+      if (state.graph.nodes.some(node => node.id === current)) select.value = current;
+    });
+  }
+
+  function selectGraphNode(id) {
+    state.selectedNode = id;
+    const node = state.graph.nodes.find(item => item.id === id);
+    const panel = $("#map-selection");
+    panel.hidden = !node;
+    if (node) {
+      $("#selected-node-label").textContent = node.label;
+      $("#selected-node-meta").textContent = node.type.toUpperCase();
+      $("#selected-node-note").textContent = node.note || "No context added.";
+    }
+    $$(".neural-node", $("#neural-map")).forEach(item => item.classList.toggle("selected", item.dataset.nodeId === id));
+  }
+
+  function renderGraph() {
+    const svg = $("#neural-map");
+    if (!svg) return;
+    svg.replaceChildren();
+    const defs = svgElement("defs");
+    const filter = svgElement("filter", { id: "node-glow", x: "-80%", y: "-80%", width: "260%", height: "260%" });
+    filter.append(svgElement("feGaussianBlur", { stdDeviation: "5", result: "blur" }));
+    const merge = svgElement("feMerge");
+    merge.append(svgElement("feMergeNode", { in: "blur" }), svgElement("feMergeNode", { in: "SourceGraphic" }));
+    filter.append(merge); defs.append(filter); svg.append(defs);
+    const nodeMap = new Map(state.graph.nodes.map(node => [node.id, node]));
+    state.graph.edges.forEach(edge => {
+      const source = nodeMap.get(edge.source);
+      const target = nodeMap.get(edge.target);
+      if (!source || !target) return;
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const curve = Math.min(90, Math.hypot(dx, dy) * .18);
+      const middleX = (source.x + target.x) / 2 - (dy ? Math.sign(dy) : 1) * curve;
+      const middleY = (source.y + target.y) / 2 + (dx ? Math.sign(dx) : 1) * curve;
+      const path = svgElement("path", { d: `M ${source.x} ${source.y} Q ${middleX} ${middleY} ${target.x} ${target.y}`, class: "neural-edge" });
+      svg.append(path);
+      if (edge.label) {
+        const label = svgElement("text", { x: middleX, y: middleY - 8, class: "neural-edge-label", "text-anchor": "middle" });
+        label.textContent = edge.label;
+        svg.append(label);
+      }
+    });
+    state.graph.nodes.forEach(node => {
+      const group = svgElement("g", { class: `neural-node type-${node.type}${state.selectedNode === node.id ? " selected" : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": `${node.label}, ${node.type}` });
+      group.dataset.nodeId = node.id;
+      group.append(svgElement("circle", { r: "34" }), svgElement("circle", { r: "23", class: "node-core" }));
+      const label = svgElement("text", { y: "52", "text-anchor": "middle" });
+      label.textContent = node.label.length > 22 ? `${node.label.slice(0, 20)}…` : node.label;
+      const kind = svgElement("text", { y: "5", class: "node-kind", "text-anchor": "middle" });
+      kind.textContent = node.type.slice(0, 3).toUpperCase();
+      group.append(kind, label);
+      group.addEventListener("click", () => selectGraphNode(node.id));
+      group.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectGraphNode(node.id); }
+      });
+      group.addEventListener("pointerdown", event => {
+        event.preventDefault();
+        draggingNode = node.id;
+        selectGraphNode(node.id);
+      });
+      svg.append(group);
+    });
+    $("#map-empty").hidden = Boolean(state.graph.nodes.length);
+    $("#map-count").textContent = `${state.graph.nodes.length} ${state.graph.nodes.length === 1 ? "NODE" : "NODES"}`;
+    updateNodeSelectors();
+    if (state.selectedNode && !nodeMap.has(state.selectedNode)) selectGraphNode("");
+  }
+
+  let draggingNode = "";
+  function handleGraphPointerMove(event) {
+    if (!draggingNode) return;
+    const node = state.graph.nodes.find(item => item.id === draggingNode);
+    if (!node) return;
+    const point = graphPoint(event);
+    node.x = Math.max(48, Math.min(952, Math.round(point.x)));
+    node.y = Math.max(48, Math.min(512, Math.round(point.y)));
+    renderGraph();
+  }
+
+  function finishGraphDrag() {
+    if (!draggingNode) return;
+    draggingNode = "";
+    persistWorkspace();
+  }
+
+  function addGraphNode(event) {
+    event.preventDefault();
+    const label = $("#node-label").value.trim();
+    if (!label) return;
+    const index = state.graph.nodes.length;
+    const angle = index * 2.399;
+    const radius = index ? Math.min(205, 82 + index * 15) : 0;
+    state.graph.nodes.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : `node-${Date.now()}-${Math.random()}`,
+      label,
+      type: $("#node-type").value,
+      note: $("#node-note").value.trim(),
+      x: Math.round(500 + Math.cos(angle) * radius),
+      y: Math.round(280 + Math.sin(angle) * radius),
+    });
+    event.currentTarget.reset();
+    persistWorkspace();
+    renderGraph();
+    selectGraphNode(state.graph.nodes.at(-1).id);
+  }
+
+  function addGraphEdge(event) {
+    event.preventDefault();
+    const source = $("#edge-source").value;
+    const target = $("#edge-target").value;
+    if (!source || !target || source === target) {
+      toast("Connection needs two nodes", "Choose two different entities to connect.", true);
+      return;
+    }
+    state.graph.edges.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : `edge-${Date.now()}-${Math.random()}`,
+      source,
+      target,
+      label: $("#edge-label").value.trim(),
+    });
+    $("#edge-label").value = "";
+    persistWorkspace();
+    renderGraph();
+    toast("Nodes connected", "The relationship was added to your local map.");
+  }
+
+  function deleteSelectedNode() {
+    if (!state.selectedNode) return;
+    const id = state.selectedNode;
+    state.graph.nodes = state.graph.nodes.filter(node => node.id !== id);
+    state.graph.edges = state.graph.edges.filter(edge => edge.source !== id && edge.target !== id);
+    state.selectedNode = "";
+    persistWorkspace();
+    renderGraph();
+    selectGraphNode("");
   }
 
   function toolByKey(key) { return state.tools.find(tool => tool.key === key); }
@@ -947,6 +1334,17 @@
     $("#pin-jump").addEventListener("click", () => $("#pinboard").scrollIntoView({ behavior: "smooth", block: "start" }));
     $("#pin-form").addEventListener("submit", addPin);
     $("#pin-grid").addEventListener("click", handlePinAction);
+    $("#browse-tools").addEventListener("click", () => { setFilter("all"); $("#tools").scrollIntoView({ behavior: "smooth", block: "start" }); });
+    $("#node-form").addEventListener("submit", addGraphNode);
+    $("#edge-form").addEventListener("submit", addGraphEdge);
+    $("#delete-node").addEventListener("click", deleteSelectedNode);
+    $("#name-search-form").addEventListener("submit", searchNames);
+    $("#image-scan-form").addEventListener("submit", scanImage);
+    $("#image-file").addEventListener("change", event => { $("#image-file-label").textContent = event.target.files[0]?.name || "Choose image"; });
+    $("#image-scan-mode").addEventListener("change", renderImageResult);
+    addEventListener("pointermove", handleGraphPointerMove);
+    addEventListener("pointerup", finishGraphDrag);
+    addEventListener("pointercancel", finishGraphDrag);
     $$('[data-filter]').forEach(button => button.addEventListener("click", () => setFilter(button.dataset.filter)));
     $("#lesson-search").addEventListener("input", event => { state.lessonQuery = event.target.value; renderLessonList(); });
     $$('[data-lesson-filter]').forEach(button => button.addEventListener("click", () => {
@@ -1003,6 +1401,8 @@
       $$('[data-view]').forEach(item => item.classList.toggle("active", item === button));
       if (view === "home") scrollTo({ top: 0, behavior: "smooth" });
       if (view === "pinboard") $("#pinboard").scrollIntoView({ behavior: "smooth", block: "start" });
+      if (view === "investigate") $("#investigation-workbench").scrollIntoView({ behavior: "smooth", block: "start" });
+      if (view === "map") $("#investigation-map").scrollIntoView({ behavior: "smooth", block: "start" });
       if (view === "tools") {
         setFilter("all");
         $("#tools").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1036,10 +1436,13 @@
   async function init() {
     restoreSettings();
     renderPins();
+    renderPinnedTools();
+    renderGraph();
     bindEvents();
     bindPointerGlow();
     initParticles();
     try {
+      await loadWorkspace();
       await Promise.all([loadCatalog(), loadLearning()]);
       renderLessonList();
       renderSourceGrid();
