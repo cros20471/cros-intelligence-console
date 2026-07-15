@@ -71,7 +71,7 @@
     return payload;
   }
 
-  const APPEARANCE_KEYS = ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose"];
+  const APPEARANCE_KEYS = ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose"];
   let appearanceSaveTimer = 0;
   function appearanceSnapshot() { return Object.fromEntries(APPEARANCE_KEYS.filter(key => localStorage.getItem(key) !== null).map(key => [key, localStorage.getItem(key)])); }
   function queueAppearanceSave() { clearTimeout(appearanceSaveTimer); appearanceSaveTimer = setTimeout(() => { api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }, 180); }
@@ -1656,6 +1656,7 @@
     const particles = localStorage.getItem("cros-particles") !== "false";
     const wings = localStorage.getItem("cros-wings") !== "false";
     const compact = localStorage.getItem("cros-compact") === "true";
+    const animations = localStorage.getItem("cros-animations") !== "false";
     $("#particle-toggle").classList.toggle("active", particles);
     $("#particle-toggle").setAttribute("aria-pressed", String(particles));
     document.body.classList.toggle("no-particles", !particles);
@@ -1665,6 +1666,9 @@
     $("#compact-toggle").classList.toggle("active", compact);
     $("#compact-toggle").setAttribute("aria-pressed", String(compact));
     document.body.classList.toggle("compact", compact);
+    $("#animation-toggle").classList.toggle("active", animations);
+    $("#animation-toggle").setAttribute("aria-pressed", String(animations));
+    document.body.classList.toggle("no-animations", !animations);
     setGlow(localStorage.getItem("cros-glow") || 70, false);
     setMotion(localStorage.getItem("cros-motion") || 100, false);
     setParticleDensity(localStorage.getItem("cros-particle-density") || 100, false);
@@ -1843,6 +1847,7 @@
     $("#particle-toggle").addEventListener("click", () => toggleSetting("#particle-toggle", "no-particles", "cros-particles", true));
     $("#wing-toggle").addEventListener("click", () => toggleSetting("#wing-toggle", "no-wings", "cros-wings", true));
     $("#compact-toggle").addEventListener("click", () => { toggleSetting("#compact-toggle", "compact", "cros-compact"); renderTools(); });
+    $("#animation-toggle").addEventListener("click", () => toggleSetting("#animation-toggle", "no-animations", "cros-animations", true));
     $("#glow-range").addEventListener("input", event => setGlow(event.target.value));
     $("#motion-range").addEventListener("input", event => setMotion(event.target.value));
     $("#particle-density").addEventListener("input", event => setParticleDensity(event.target.value));
@@ -1851,8 +1856,8 @@
     $$('[data-shape]').forEach(button => button.addEventListener("click", () => setShape(button.dataset.shape)));
     $$('[data-columns]').forEach(button => button.addEventListener("click", () => setColumns(button.dataset.columns)));
     $("#reset-appearance").addEventListener("click", () => {
-      ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns"].forEach(key => localStorage.removeItem(key));
-      document.body.classList.remove("no-particles", "no-wings", "compact", "fixed-columns");
+      ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns"].forEach(key => localStorage.removeItem(key));
+      document.body.classList.remove("no-particles", "no-wings", "no-animations", "compact", "fixed-columns");
       restoreSettings();
       renderTools();
       toast("Appearance reset", "The original CROS interface settings are restored.");

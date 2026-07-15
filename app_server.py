@@ -235,7 +235,7 @@ def write_workspace_state(value: object) -> dict:
 
 APPEARANCE_KEYS = {
     "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles",
-    "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density",
+    "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density",
     "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose",
 }
 HEX_APPEARANCE_KEYS = {"cros-custom-accent", "cros-background", "cros-star-color"}
@@ -259,7 +259,7 @@ def clean_appearance_state(value: object) -> dict[str, str]:
             continue
         if key == "cros-rail-autoclose" and text not in {"0", "3000", "5000", "10000"}:
             continue
-        if key in {"cros-particles", "cros-wings", "cros-compact"} and text not in {"true", "false"}:
+        if key in {"cros-particles", "cros-wings", "cros-compact", "cros-animations"} and text not in {"true", "false"}:
             continue
         if key in {"cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness"}:
             try:
