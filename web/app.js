@@ -1554,6 +1554,7 @@
     localStorage.setItem("cros-accent", "custom");
     localStorage.setItem("cros-custom-accent", hex);
   }
+  function setCustomBackground(hex, save = true) { document.documentElement.style.setProperty("--custom-bg", hex); if (save) localStorage.setItem("cros-background", hex); }
 
   function toggleSetting(id, bodyClass, storageKey, invert = false) {
     const button = $(id);
@@ -1778,6 +1779,9 @@
     $("#settings-close").addEventListener("click", () => $("#settings-drawer").classList.remove("open"));
     $$('[data-accent]').forEach(button => button.addEventListener("click", () => setAccent(button.dataset.accent)));
     $("#custom-accent").addEventListener("input", event => setCustomAccent(event.target.value));
+    $("#custom-background").value = localStorage.getItem("cros-background") || "#090b14";
+    setCustomBackground($("#custom-background").value, false);
+    $("#custom-background").addEventListener("input", event => setCustomBackground(event.target.value));
     $("#particle-toggle").addEventListener("click", () => toggleSetting("#particle-toggle", "no-particles", "cros-particles", true));
     $("#wing-toggle").addEventListener("click", () => toggleSetting("#wing-toggle", "no-wings", "cros-wings", true));
     $("#compact-toggle").addEventListener("click", () => { toggleSetting("#compact-toggle", "compact", "cros-compact"); renderTools(); });
