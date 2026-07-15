@@ -263,10 +263,6 @@
   async function launchTool(toolOrKey) {
     const tool = typeof toolOrKey === "string" ? state.tools.find(item => item.key === toolOrKey) : toolOrKey;
     if (!tool) return;
-    if (tool.key === "osint:4" && !localStorage.getItem("cros-hibp-api-key")) {
-      const guide = $("#hibp-guide"); guide.hidden = false; $("#hibp-guide-key").focus();
-      await new Promise(resolve => { const done = () => { guide.hidden = true; resolve(); }; $("#hibp-guide-continue").onclick = () => { const key = $("#hibp-guide-key").value.trim(); if (/^[0-9a-fA-F]{32}$/.test(key)) { localStorage.setItem("cros-hibp-api-key", key); done(); } else toast("Key needed", "Paste a valid 32-character HIBP key.", true); }; $("#hibp-guide-close").onclick = done; $("#hibp-guide-x").onclick = done; });
-    }
     if (["osint:1", "osint:2"].includes(tool.key)) {
       recordRecent(tool);
       state.identityToolId = tool.id;
@@ -1803,8 +1799,6 @@
         $("#clear-local-data").textContent = "CLEAR LOCAL CROS DATA"; toast("Local data cleared", "Cros saved state and preferences were removed.");
       } catch (error) { toast("Could not clear local data", error.message, true); }
     });
-    $("#hibp-api-key").value = localStorage.getItem("cros-hibp-api-key") || "";
-    $("#hibp-api-key").addEventListener("change", event => localStorage.setItem("cros-hibp-api-key", event.target.value.trim()));
     $("#profile-export").addEventListener("click", exportProfile); $("#profile-import-file").addEventListener("change", importProfile);
     $("#wing-core").addEventListener("click", () => toggleWingDeck());
     $("#wing-tools").addEventListener("click", () => {
