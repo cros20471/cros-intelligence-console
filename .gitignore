@@ -13,6 +13,7 @@ downloads/
 blackbird/
 *_blackbird/
 learning_progress.json
+workspace_state.json
 settings.json
 .env
 .env.*
