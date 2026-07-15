@@ -778,6 +778,11 @@ body.no-wings .wing-deck { display: none; }
 .hibp-connector p { margin:5px 0 0; line-height:1.5; }
 .workspace-dock { overflow:hidden; }
 .workspace-dock-content { overflow-x:hidden; overflow-y:auto; }
+@media (min-width: 1100px) {
+  body.rail-collapsed .top-shell { position:fixed; inset:12px auto auto 12px; width:64px !important; height:64px !important; min-width:0; margin:0; padding:0 !important; transform:none !important; }
+  body.rail-collapsed .topbar { width:64px; height:64px; min-width:0; margin:0; padding:0 !important; display:block; }
+  body.rail-collapsed .brand { position:absolute; left:10px; top:10px; width:42px; height:42px; margin:0; padding:0; }
+}
 .brand { cursor:pointer; outline:none; }
 .brand:hover .brand-mark { border-color:rgba(var(--accent-rgb),.8); box-shadow:0 0 18px rgba(var(--accent-rgb),.2), inset 0 0 18px rgba(var(--accent-rgb),.12); transform:rotate(45deg) scale(1.04); }
 .brand:focus, .brand:focus-visible { outline:none; }
@@ -818,4 +823,9 @@ body.no-wings .wing-deck { display: none; }
   .brand { justify-self:start; }
   .brand-mark { width:34px; height:34px; border-radius:10px; }
   .top-actions { justify-self:end; }
+}
+@media (min-width: 1100px) {
+  body.rail-collapsed .top-shell { position:fixed; inset:12px auto auto 12px !important; width:64px !important; height:64px !important; min-width:0; margin:0; padding:0 !important; transform:none !important; }
+  body.rail-collapsed .topbar { width:64px !important; height:64px !important; min-width:0; margin:0; padding:0 !important; display:block !important; }
+  body.rail-collapsed .brand { position:absolute; left:10px; top:10px; width:42px !important; height:42px !important; margin:0 !important; padding:0 !important; }
 }
