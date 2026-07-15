@@ -20,6 +20,7 @@
 
   <header class="top-shell">
     <nav class="topbar" aria-label="Primary navigation">
+      <button class="rail-resize-handle" id="rail-resize-handle" aria-label="Resize navigation rail"></button>
       <button class="brand" data-scroll="home" aria-label="Cros home">
         <span class="brand-mark"><span>C</span></span>
         <span class="brand-copy"><strong>CROS</strong><small>INTELLIGENCE CONSOLE</small></span>
@@ -150,7 +151,7 @@
       <div class="neural-map-shell">
         <svg id="neural-map" viewBox="0 0 1000 420" role="img" aria-labelledby="map-title map-description"><desc id="map-description">Interactive investigation graph. Drag nodes to organize leads and select a node to inspect or remove it.</desc></svg>
         <div class="map-empty" id="map-empty"><strong>Start with one lead</strong><span>Add an entity above, then connect related clues.</span></div>
-        <aside class="map-selection" id="map-selection" hidden><span>SELECTED NODE</span><strong id="selected-node-label"></strong><small id="selected-node-meta"></small><p id="selected-node-note"></p><button id="delete-node" type="button">REMOVE NODE</button></aside>
+        <aside class="map-selection" id="map-selection" hidden><span>SELECTED NODE</span><strong id="selected-node-label"></strong><small id="selected-node-meta"></small><p id="selected-node-note"></p><div class="node-actions"><button id="edit-node" type="button">EDIT NODE</button><button id="delete-node" type="button">REMOVE NODE</button></div><form id="node-edit-form" hidden><label>LABEL<input id="edit-node-label" maxlength="80"></label><label>CONTEXT<textarea id="edit-node-note" maxlength="300"></textarea></label><div><button type="submit">SAVE</button><button id="cancel-node-edit" type="button">CANCEL</button></div></form></aside>
       </div>
     </section>
 
@@ -286,7 +287,7 @@
 
   <aside class="workspace-dock" id="workspace-dock" aria-label="Investigation workspace" aria-hidden="true" hidden>
     <button class="workspace-resize-handle" id="workspace-resize-handle" aria-label="Resize investigation workspace" aria-description="Drag horizontally or use the left and right arrow keys"></button>
-    <header class="workspace-dock-head">
+    <header class="workspace-dock-head" id="workspace-drag-handle" title="Drag to move the investigation workspace">
       <div><span>IN-APP WORKSPACE</span><h2>Investigate</h2></div>
       <div class="workspace-dock-actions"><button id="workspace-customize" aria-expanded="false" aria-controls="workspace-settings">TUNE</button><button id="workspace-size" aria-label="Maximize workspace">□</button><button id="workspace-close" aria-label="Close workspace">×</button></div>
     </header>
@@ -305,12 +306,12 @@
         <header class="session-head"><div><span>RUNNING INSIDE CROS</span><h3 id="session-title">Tool session</h3></div><strong id="session-status">READY</strong></header>
         <div class="session-progress" id="session-progress" role="progressbar" aria-label="Tool progress" aria-valuetext="Ready"><i></i><b></b></div>
         <div class="session-meta"><span id="session-stage">Choose any tool to start</span><span id="session-time">0.0s</span></div>
-        <pre class="session-output" id="session-output" aria-live="polite">Tool output will appear here in real time.</pre>
         <section class="session-socials" id="session-socials" hidden aria-labelledby="session-socials-title">
           <header><div><span>BLACKBIRD LIVE RETURNS</span><h4 id="session-socials-title">Found social accounts</h4></div><button type="button" id="session-view-map">VIEW MAP</button></header>
           <div id="session-social-list"></div>
           <small>Blackbird detected these public account pages. Verify profile details before treating separate accounts as the same person.</small>
         </section>
+        <details class="session-log"><summary>LIVE ENGINE LOG</summary><pre class="session-output" id="session-output" aria-live="polite">Tool output will appear here in real time.</pre></details>
         <form class="session-input-form" id="session-input-form" autocomplete="off">
           <label><span>REPLY TO TOOL</span><input id="session-input" placeholder="Type an answer when the tool asks" maxlength="4096"></label>
           <button type="submit" class="primary-button">SEND</button>
@@ -341,11 +342,14 @@
     <div class="drawer-section setting-row"><div><label>PARTICLE FIELD</label><small>Animated local signal map</small></div><button class="toggle active" id="particle-toggle" aria-pressed="true"><i></i></button></div>
     <div class="drawer-section setting-row"><div><label>ANIMATED WINGS</label><small>Reactive centerpiece wings</small></div><button class="toggle active" id="wing-toggle" aria-pressed="true"><i></i></button></div>
     <div class="drawer-section setting-row"><div><label>COMPACT CARDS</label><small>Fit more tools on screen</small></div><button class="toggle" id="compact-toggle" aria-pressed="false"><i></i></button></div>
+    <div class="drawer-section"><label for="rail-autoclose">NAVIGATION AUTO-CLOSE</label><small>Collapse after choosing a section.</small><select id="rail-autoclose"><option value="0">Never</option><option value="3000" selected>3 seconds</option><option value="5000">5 seconds</option><option value="10000">10 seconds</option></select></div>
     <div class="drawer-section range-setting"><div><label for="glow-range">GLOW STRENGTH</label><output id="glow-output">70%</output></div><input id="glow-range" type="range" min="0" max="100" value="70"></div>
     <div class="drawer-section range-setting"><div><label for="motion-range">MOTION SPEED</label><output id="motion-output">100%</output></div><input id="motion-range" type="range" min="35" max="180" value="100"></div>
     <div class="drawer-section"><label>CARD SHAPE</label><div class="shape-options" role="group" aria-label="Card corner shape"><button data-shape="soft" class="active">SOFT</button><button data-shape="sharp">SHARP</button><button data-shape="round">ROUND</button></div></div>
     <div class="drawer-section"><label>TOOL GRID</label><small>Choose the desktop card density. Smaller screens stay responsive.</small><div class="column-options" role="group" aria-label="Tool card columns"><button data-columns="auto" class="active">AUTO</button><button data-columns="3">3 COL</button><button data-columns="4">4 COL</button><button data-columns="5">5 COL</button></div></div>
     <div class="drawer-section"><button class="reset-appearance" id="reset-appearance">RESET APPEARANCE</button></div>
+    <div class="drawer-section hibp-connector"><label>HIBP CONNECTOR</label><small>Each user supplies their own key. Cros stores it only in this browser.</small><input id="hibp-api-key" type="password" maxlength="32" placeholder="32-character HIBP API key" autocomplete="off"><a href="https://haveibeenpwned.com/API/Key" target="_blank" rel="noopener">GET YOUR KEY</a><p>How to use: get a key from HIBP, paste it here, then open <b>Breach Notifications</b> in the Tool Index and enter an email.</p></div>
+    <div class="drawer-section"><button class="reset-appearance danger-action" id="clear-local-data">CLEAR LOCAL CROS DATA</button><small>Deletes saved pins, notes, map data, lessons, and local preferences.</small></div>
   </aside>
 
   <div class="detail-layer" id="detail-layer" hidden>
@@ -355,6 +359,7 @@
       <div id="posture-list" class="posture-list"></div>
     </section>
   </div>
+  <div class="detail-layer" id="hibp-guide" hidden><button class="detail-backdrop" id="hibp-guide-close" aria-label="Close HIBP guide"></button><section class="detail-panel" role="dialog" aria-modal="true"><div class="drawer-head"><div><span>BREACH NOTIFICATIONS</span><h2>Connect HIBP</h2></div><button class="icon-button" id="hibp-guide-x" aria-label="Close guide">×</button></div><p>1. Get your personal API key from HIBP. 2. Paste it below. 3. Cros keeps it in this browser only.</p><a href="https://haveibeenpwned.com/API/Key" target="_blank" rel="noopener">GET HIBP KEY</a><label class="hibp-guide-field">API KEY<input id="hibp-guide-key" type="password" maxlength="32" placeholder="Paste your 32-character key"></label><button class="primary-button" id="hibp-guide-continue" type="button">SAVE &amp; CONTINUE</button></section></div>
 
   <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
   <script src="/app.js" defer></script>
