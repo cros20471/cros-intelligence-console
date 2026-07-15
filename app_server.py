@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import base64
 import binascii
 import json
 import mimetypes
@@ -14,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 import urllib.parse
 import uuid
 import webbrowser
@@ -25,6 +27,7 @@ from pathlib import Path
 
 from app_catalog import CATALOG, TOOL_KEYS
 from learning_catalog import LEARNING, SOURCES
+from image_analysis import analyze_image_file
 
 APP_DIR = Path(__file__).resolve().parent
 WEB_DIR = APP_DIR / "web"
@@ -34,6 +37,8 @@ LAST_SEEN = time.monotonic()
 LAST_SEEN_LOCK = threading.Lock()
 LEARNING_PROGRESS_FILE = APP_DIR / "learning_progress.json"
 LEARNING_PROGRESS_LOCK = threading.Lock()
+WORKSPACE_STATE_FILE = APP_DIR / "workspace_state.json"
+WORKSPACE_STATE_LOCK = threading.Lock()
 APP_ICON_FILE = WEB_DIR / "cros.ico"
 APP_LOGO_FILE = WEB_DIR / "cros-logo.png"
 APP_ICON_HANDLES: list[int] = []
@@ -65,6 +70,93 @@ def write_learning_progress(values: object) -> list[str]:
     return completed
 
 
+def _short_text(value: object, limit: int) -> str:
+    return str(value or "").strip()[:limit]
+
+
+def clean_workspace_state(value: object) -> dict:
+    source = value if isinstance(value, dict) else {}
+    pins = []
+    for item in source.get("pins", []) if isinstance(source.get("pins"), list) else []:
+        if not isinstance(item, dict) or len(pins) >= 100:
+            continue
+        pin_id = _short_text(item.get("id"), 100)
+        if not pin_id:
+            continue
+        pins.append({
+            "id": pin_id,
+            "title": _short_text(item.get("title"), 80),
+            "target": _short_text(item.get("target"), 2048),
+            "note": _short_text(item.get("note"), 240),
+            "priority": bool(item.get("priority")),
+            "created": int(item.get("created", 0)) if str(item.get("created", 0)).isdigit() else 0,
+        })
+
+    favorites = []
+    for key in source.get("favorite_tools", []) if isinstance(source.get("favorite_tools"), list) else []:
+        key = str(key)
+        if key in TOOL_KEYS and key not in favorites:
+            favorites.append(key)
+    recent = []
+    for key in source.get("recent_tools", []) if isinstance(source.get("recent_tools"), list) else []:
+        key = str(key)
+        if key in TOOL_KEYS and key not in recent:
+            recent.append(key)
+
+    graph_source = source.get("graph") if isinstance(source.get("graph"), dict) else {}
+    nodes = []
+    node_ids = set()
+    for item in graph_source.get("nodes", []) if isinstance(graph_source.get("nodes"), list) else []:
+        if not isinstance(item, dict) or len(nodes) >= 150:
+            continue
+        node_id = _short_text(item.get("id"), 100)
+        label = _short_text(item.get("label"), 80)
+        if not node_id or not label or node_id in node_ids:
+            continue
+        try:
+            x = min(960.0, max(40.0, float(item.get("x", 500))))
+            y = min(520.0, max(40.0, float(item.get("y", 280))))
+        except (TypeError, ValueError):
+            x, y = 500.0, 280.0
+        node_ids.add(node_id)
+        nodes.append({"id": node_id, "label": label, "type": _short_text(item.get("type"), 24) or "entity",
+                      "note": _short_text(item.get("note"), 300), "x": x, "y": y})
+
+    edges = []
+    edge_ids = set()
+    for item in graph_source.get("edges", []) if isinstance(graph_source.get("edges"), list) else []:
+        if not isinstance(item, dict) or len(edges) >= 300:
+            continue
+        edge_id = _short_text(item.get("id"), 100)
+        source_id = _short_text(item.get("source"), 100)
+        target_id = _short_text(item.get("target"), 100)
+        if not edge_id or edge_id in edge_ids or source_id == target_id or source_id not in node_ids or target_id not in node_ids:
+            continue
+        edge_ids.add(edge_id)
+        edges.append({"id": edge_id, "source": source_id, "target": target_id,
+                      "label": _short_text(item.get("label"), 60)})
+    return {"pins": pins, "favorite_tools": favorites, "recent_tools": recent[:12],
+            "graph": {"nodes": nodes, "edges": edges}}
+
+
+def read_workspace_state() -> dict:
+    with WORKSPACE_STATE_LOCK:
+        try:
+            value = json.loads(WORKSPACE_STATE_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            value = {}
+    return clean_workspace_state(value)
+
+
+def write_workspace_state(value: object) -> dict:
+    cleaned = clean_workspace_state(value)
+    temporary = WORKSPACE_STATE_FILE.with_suffix(".tmp")
+    with WORKSPACE_STATE_LOCK:
+        temporary.write_text(json.dumps(cleaned, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(temporary, WORKSPACE_STATE_FILE)
+    return cleaned
+
+
 def console_python() -> str:
     executable = Path(sys.executable)
     if executable.name.lower() == "pythonw.exe":
@@ -86,6 +178,86 @@ def open_pinned_target(raw_target: object) -> None:
     if not path.exists():
         raise ValueError("That file or folder does not exist")
     os.startfile(str(path.resolve()))  # type: ignore[attr-defined]
+
+
+def name_search_payload(raw_query: object) -> dict:
+    query = _short_text(raw_query, 100)
+    if not query:
+        raise ValueError("Enter a name or username")
+    username = query.lstrip("@").strip()
+    if not all(char.isalnum() or char in "._-" for char in username) or len(username) > 64:
+        username = ""
+    variants = []
+    if username and " " not in query:
+        chunks = [part for part in username.lower().replace("-", ".").replace("_", ".").split(".") if part]
+        compact = "".join(chunks)
+        for candidate in [username.lower(), compact, ".".join(chunks), "_".join(chunks), "-".join(chunks),
+                          f"the{compact}", f"real{compact}", f"{compact}official"]:
+            if candidate and candidate not in variants:
+                variants.append(candidate)
+    encoded = urllib.parse.quote_plus(query)
+    searches = [
+        {"name": "Google", "url": f"https://www.google.com/search?q={encoded}"},
+        {"name": "Bing", "url": f"https://www.bing.com/search?q={encoded}"},
+        {"name": "DuckDuckGo", "url": f"https://duckduckgo.com/?q={encoded}"},
+        {"name": "GitHub code and profiles", "url": f"https://github.com/search?q={encoded}&type=users"},
+    ]
+    profiles = []
+    if username:
+        profiles = [
+            {"name": "GitHub", "url": f"https://github.com/{username}"},
+            {"name": "Reddit", "url": f"https://www.reddit.com/user/{username}"},
+            {"name": "X", "url": f"https://x.com/{username}"},
+            {"name": "Instagram", "url": f"https://www.instagram.com/{username}/"},
+            {"name": "TikTok", "url": f"https://www.tiktok.com/@{username}"},
+            {"name": "YouTube", "url": f"https://www.youtube.com/@{username}"},
+        ]
+    return {"query": query, "variants": variants[:12], "profiles": profiles, "searches": searches,
+            "notice": "Candidate links are leads, not confirmed identity matches. Compare multiple public details before connecting accounts."}
+
+
+ALLOWED_WEB_HOSTS = {
+    "google.com", "www.google.com", "lens.google.com", "bing.com", "www.bing.com", "duckduckgo.com",
+    "github.com", "reddit.com", "www.reddit.com", "x.com", "instagram.com", "www.instagram.com",
+    "tiktok.com", "www.tiktok.com", "youtube.com", "www.youtube.com", "yandex.com", "yandex.ru",
+}
+
+
+def open_allowed_web_url(raw_url: object) -> None:
+    url = _short_text(raw_url, 2048)
+    parsed = urllib.parse.urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or host not in ALLOWED_WEB_HOSTS:
+        raise ValueError("That web destination is not in the research allowlist")
+    if not webbrowser.open(url):
+        raise OSError("Windows could not open that research page")
+
+
+def analyze_uploaded_image(body: dict) -> dict:
+    encoded = str(body.get("data", ""))
+    if encoded.startswith("data:"):
+        encoded = encoded.partition(",")[2]
+    if not encoded or len(encoded) > 16_000_000:
+        raise ValueError("Choose an image smaller than 10 MB")
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("The image data is invalid") from exc
+    if not data or len(data) > 10_000_000:
+        raise ValueError("Choose an image smaller than 10 MB")
+    suffix = Path(_short_text(body.get("name"), 120)).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff"}:
+        suffix = ".img"
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="cros-image-", suffix=suffix, delete=False) as temporary:
+            temporary.write(data)
+            temporary_path = Path(temporary.name)
+        return analyze_image_file(temporary_path, include_thumbnail=True)
+    finally:
+        if temporary_path:
+            try: temporary_path.unlink(missing_ok=True)
+            except OSError: pass
 
 
 def fallback_icon_bytes() -> bytes:
@@ -415,8 +587,8 @@ class Handler(BaseHTTPRequestHandler):
         supplied = self.headers.get("X-Cros-Token", "") or query.get("token", [""])[0]
         return secrets.compare_digest(str(supplied), TOKEN)
 
-    def read_json(self) -> dict:
-        try: length = min(int(self.headers.get("Content-Length", "0")), 32_768)
+    def read_json(self, limit: int = 262_144) -> dict:
+        try: length = min(int(self.headers.get("Content-Length", "0")), limit)
         except ValueError: length = 0
         if not length: return {}
         try: value = json.loads(self.rfile.read(length).decode("utf-8"))
@@ -437,6 +609,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             self.json_response({"lessons": LEARNING, "sources": SOURCES, "count": len(LEARNING),
                                 "completed": read_learning_progress()})
+            return
+        if route == "/api/workspace":
+            if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
+            self.json_response(read_workspace_state())
             return
         if route == "/api/status":
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
@@ -481,7 +657,22 @@ class Handler(BaseHTTPRequestHandler):
         touch()
         if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
         route = urllib.parse.urlsplit(self.path).path
-        body = self.read_json()
+        body = self.read_json(16_500_000 if route == "/api/image-analyze" else 262_144)
+        if route == "/api/name-search":
+            try: self.json_response(name_search_payload(body.get("query")))
+            except ValueError as exc: self.json_response({"error": str(exc)}, 400)
+            return
+        if route == "/api/image-analyze":
+            try: self.json_response(analyze_uploaded_image(body))
+            except (OSError, RuntimeError, ValueError) as exc: self.json_response({"error": str(exc)}, 400)
+            return
+        if route == "/api/open-url":
+            try:
+                open_allowed_web_url(body.get("url"))
+                self.json_response({"ok": True})
+            except ValueError as exc: self.json_response({"error": str(exc)}, 400)
+            except OSError as exc: self.json_response({"error": str(exc)}, 500)
+            return
         if route == "/api/launch":
             category = str(body.get("category", "")).lower().strip()
             tool_id = str(body.get("id", "")).strip()
@@ -507,6 +698,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response({"ok": True, "completed": completed})
             except (OSError, ValueError) as exc:
                 self.json_response({"error": str(exc)}, 400)
+            return
+        if route == "/api/workspace":
+            try:
+                self.json_response(write_workspace_state(body))
+            except OSError as exc:
+                self.json_response({"error": str(exc)}, 500)
             return
         if route == "/api/open-pinned":
             try:
