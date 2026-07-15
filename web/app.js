@@ -1584,6 +1584,22 @@
     if (save) localStorage.setItem("cros-motion", String(speed));
   }
 
+  function setParticleDensity(value, save = true) {
+    const density = Math.max(20, Math.min(180, Number(value) || 100));
+    $("#particle-density").value = String(density);
+    $("#particle-density-output").textContent = `${density}%`;
+    if (save) localStorage.setItem("cros-particle-density", String(density));
+    dispatchEvent(new Event("resize"));
+  }
+
+  function setLightSmoothing(value, save = true) {
+    const smoothing = Math.max(20, Math.min(100, Number(value) || 75));
+    document.documentElement.style.setProperty("--light-smoothing", String(smoothing / 100));
+    $("#light-smoothing").value = String(smoothing);
+    $("#light-smoothing-output").textContent = `${smoothing}%`;
+    if (save) localStorage.setItem("cros-light-smoothing", String(smoothing));
+  }
+
   function setShape(shape, save = true) {
     const radii = { soft: "17px", sharp: "6px", round: "26px" };
     const selected = radii[shape] ? shape : "soft";
@@ -1621,6 +1637,8 @@
     document.body.classList.toggle("compact", compact);
     setGlow(localStorage.getItem("cros-glow") || 70, false);
     setMotion(localStorage.getItem("cros-motion") || 100, false);
+    setParticleDensity(localStorage.getItem("cros-particle-density") || 100, false);
+    setLightSmoothing(localStorage.getItem("cros-light-smoothing") || 75, false);
     setShape(localStorage.getItem("cros-shape") || "soft", false);
     setColumns(localStorage.getItem("cros-columns") || "auto", false);
   }
@@ -1656,7 +1674,10 @@
     addEventListener("pointermove", event => { pointer.x = event.clientX; pointer.y = event.clientY; }, { passive: true });
     resize();
 
-    function frame() {
+    let previousTime = performance.now();
+    function frame(now) {
+      const delta = Math.min(2, Math.max(.25, (now - previousTime) / 16.67));
+      previousTime = now;
       if (document.hidden || document.body.classList.contains("no-particles")) {
         requestAnimationFrame(frame);
         return;
@@ -1664,13 +1685,15 @@
       context.clearRect(0, 0, width, height);
       const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent-rgb").trim() || "133,102,255";
       particles.forEach((particle, index) => {
-        particle.x += particle.vx; particle.y += particle.vy;
+        particle.x += particle.vx * delta; particle.y += particle.vy * delta;
         if (particle.x < -10) particle.x = width + 10; if (particle.x > width + 10) particle.x = -10;
         if (particle.y < -10) particle.y = height + 10; if (particle.y > height + 10) particle.y = -10;
         const distance = Math.hypot(pointer.x - particle.x, pointer.y - particle.y);
         const boost = distance < 150 ? (150 - distance) / 150 : 0;
         context.beginPath(); context.arc(particle.x, particle.y, particle.r + boost * 1.2, 0, Math.PI * 2);
-        context.fillStyle = `rgba(${accent},${particle.a + boost * .35})`; context.fill();
+        const smoothness = Number(getComputedStyle(document.documentElement).getPropertyValue("--light-smoothing")) || .75;
+        const shimmer = .82 + Math.sin(now * .0012 + index) * .18 * smoothness;
+        context.fillStyle = `rgba(${accent},${Math.min(1, (particle.a * shimmer) + boost * .35)})`; context.fill();
         if (index % 7 === 0 && boost > .25) {
           context.beginPath(); context.moveTo(particle.x, particle.y); context.lineTo(pointer.x, pointer.y);
           context.strokeStyle = `rgba(${accent},${boost * .08})`; context.stroke();
@@ -1787,10 +1810,12 @@
     $("#compact-toggle").addEventListener("click", () => { toggleSetting("#compact-toggle", "compact", "cros-compact"); renderTools(); });
     $("#glow-range").addEventListener("input", event => setGlow(event.target.value));
     $("#motion-range").addEventListener("input", event => setMotion(event.target.value));
+    $("#particle-density").addEventListener("input", event => setParticleDensity(event.target.value));
+    $("#light-smoothing").addEventListener("input", event => setLightSmoothing(event.target.value));
     $$('[data-shape]').forEach(button => button.addEventListener("click", () => setShape(button.dataset.shape)));
     $$('[data-columns]').forEach(button => button.addEventListener("click", () => setColumns(button.dataset.columns)));
     $("#reset-appearance").addEventListener("click", () => {
-      ["cros-accent", "cros-custom-accent", "cros-particles", "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-shape", "cros-columns"].forEach(key => localStorage.removeItem(key));
+      ["cros-accent", "cros-custom-accent", "cros-particles", "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-shape", "cros-columns"].forEach(key => localStorage.removeItem(key));
       document.body.classList.remove("no-particles", "no-wings", "compact", "fixed-columns");
       restoreSettings();
       renderTools();

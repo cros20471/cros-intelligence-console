@@ -20,6 +20,7 @@
   --radius-sm: 12px;
   --card-radius: 17px;
   --glow-level: 0.7;
+  --light-smoothing: 0.75;
   --orbit-fast: 18s;
   --orbit-slow: 28s;
   --wing-speed: 4.6s;
@@ -216,7 +217,7 @@ main { width: min(1460px, calc(100% - 48px)); margin: 0 auto; }
 .wing-upper-right { --lift: -2deg; left: calc(50% + 44px); bottom: calc(50% + 8px); transform-origin: left bottom; }
 .wing-lower-left { --lift: -2deg; right: calc(50% + 44px); top: calc(50% + 8px); transform-origin: right top; }
 .wing-lower-right { --lift: 2deg; left: calc(50% + 44px); top: calc(50% + 8px); transform-origin: left top; }
-.wing i { --feather-angle: 0deg; position: absolute; right: 0; width: 100%; height: 15px; transform-origin: right center; transform: rotate(var(--feather-angle)); opacity: .72; clip-path: polygon(0 50%, 9% 5%, 91% 20%, 100% 38%, 100% 62%, 91% 80%, 9% 95%); background: repeating-linear-gradient(14deg, transparent 0 7px, rgba(var(--accent-rgb),.2) 7.5px 8.5px), linear-gradient(180deg, rgba(236,241,255,.13), rgba(var(--accent-rgb),.16) 48%, rgba(8,10,20,.04)); border-top: 1px solid rgba(228,235,255,.36); border-bottom: 1px solid rgba(var(--accent-rgb),.34); filter: drop-shadow(0 0 6px rgba(var(--accent-rgb),calc(.23 * var(--glow-level)))); animation: featherLift var(--wing-speed) ease-in-out infinite; }
+.wing i { --feather-angle: 0deg; position: absolute; right: 0; width: 100%; height: 15px; transform-origin: right center; transform: rotate(var(--feather-angle)); opacity: .72; clip-path: polygon(0 50%, 9% 5%, 91% 20%, 100% 38%, 100% 62%, 91% 80%, 9% 95%); background: repeating-linear-gradient(14deg, transparent 0 7px, rgba(var(--accent-rgb),.2) 7.5px 8.5px), linear-gradient(180deg, rgba(236,241,255,.13), rgba(var(--accent-rgb),.16) 48%, rgba(8,10,20,.04)); border-top: 1px solid rgba(228,235,255,.36); border-bottom: 1px solid rgba(var(--accent-rgb),.34); filter: drop-shadow(0 0 6px rgba(var(--accent-rgb),calc(.23 * var(--glow-level)))); animation: featherLift var(--wing-speed) cubic-bezier(.45,0,.55,1) infinite; will-change:transform,opacity; backface-visibility:hidden; }
 .wing i::after { content: ""; position: absolute; left: 7%; right: 1%; top: 50%; height: 1px; background: linear-gradient(90deg, transparent, rgba(231,237,255,.56), rgba(var(--accent-rgb),.34)); }
 .wing-upper-left i, .wing-upper-right i { bottom: 5px; }
 .wing-lower-left i, .wing-lower-right i { top: 5px; }
