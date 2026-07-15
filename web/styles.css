@@ -765,6 +765,8 @@ body.no-wings .wing-deck { display: none; }
 .location-lab { grid-column:1 / -1; }.location-lab form { min-width:0; grid-template-columns:minmax(140px,.6fr) minmax(0,1.4fr) auto; gap:10px; }.location-lab form .primary-button { width:100%; min-width:150px; height:40px; }.location-lab textarea { min-width:0; min-height:86px; resize:vertical; padding:11px; border:1px solid var(--line); border-radius:10px; background:#090a13; color:#eeeaf5; font:500 11px/1.45 var(--mono); }.location-lab input { width:100%; box-sizing:border-box; height:40px; padding:0 11px; border:1px solid var(--line); border-radius:10px; background:#090a13; color:#eeeaf5; }.field-hint { display:block; min-height:12px; color:#777486; font-size:9px; line-height:1.35; }.location-results { padding:14px 15px 16px; color:#a9a4b7; font-size:11px; line-height:1.5; }.location-results strong { color:var(--accent-soft); font:700 8px/1 var(--mono); letter-spacing:.1em; }.location-results ul { margin:10px 0 0; padding-left:18px; }.location-results li { margin:7px 0; }
 .settings-drawer input[type="color"] { width:100%; height:42px; padding:4px; border:1px solid var(--line); border-radius:10px; background:#090a13; cursor:pointer; }
 .wing { animation: wingBreath 8s ease-in-out infinite; will-change: opacity; }
+.wing { animation-play-state: running; }
+.no-wings .wing { animation-play-state: paused; }
 .wing i { animation: none !important; }
 .signal-node { animation: softNodePulse 4.8s ease-in-out infinite; }
 .settings-drawer .drawer-section:not(.setting-row) > label { display:block; margin-bottom:9px; }

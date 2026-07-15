@@ -1582,6 +1582,9 @@
     button.setAttribute("aria-pressed", String(active));
     document.body.classList.toggle(bodyClass, invert ? !active : active);
     localStorage.setItem(storageKey, String(active));
+    if (bodyClass === "no-wings" && active) {
+      $$(".wing").forEach(wing => { wing.style.animation = "none"; void wing.offsetWidth; wing.style.animation = ""; });
+    }
   }
 
   function setGlow(value, save = true) {
