@@ -668,6 +668,7 @@ body.no-wings .wing-deck { display: none; }
 @keyframes sessionStripes { to { transform:translateX(22px); } }
 @keyframes wingBreath { 0%,100% { opacity:.68; } 50% { opacity:.82; } }
 @keyframes softNodePulse { 0%,100% { opacity:.5; transform:scale(.9); } 50% { opacity:1; transform:scale(1.12); } }
+@keyframes featherDrift { 0%,100% { transform:rotate(var(--feather-angle)) translate3d(0,0,0); } 50% { transform:rotate(calc(var(--feather-angle) + var(--lift))) translate3d(-1px,-.5px,0); } }
 
 @media (min-width: 1201px) {
   body.fixed-columns .tool-grid { grid-template-columns: repeat(var(--tool-columns),minmax(0,1fr)); }
@@ -767,6 +768,8 @@ body.no-wings .wing-deck { display: none; }
 .wing { animation: wingBreath 8s ease-in-out infinite; will-change: opacity; }
 .wing { animation-play-state: running; }
 .no-wings .wing { animation-play-state: paused; }
+.wing i { animation: featherDrift var(--wing-speed) cubic-bezier(.45,0,.55,1) infinite !important; will-change: transform; }
+.no-wings .wing i { animation-play-state: paused !important; }
 .wing i { animation: none !important; }
 .signal-node { animation: softNodePulse 4.8s ease-in-out infinite; }
 .settings-drawer .drawer-section:not(.setting-row) > label { display:block; margin-bottom:9px; }
