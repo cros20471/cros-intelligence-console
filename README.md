@@ -8,7 +8,7 @@ The ChatGPT-style Investigation Workspace is a collapsible, resizable panel for 
 
 1. Install Python 3.11 or newer and Git.
 2. Clone this repository and open its folder.
-3. Run `python -m pip install -r requirements.txt`.
+3. Use the PowerShell block below; it installs Cros dependencies and the Blackbird account-search engine dependencies.
 4. Double-click `start_osint_tool.bat`. The local app opens in a dedicated Edge or Chrome app window.
 5. Search the 92-tool index or use the category, Local, Pinned, and Recent filters. Select **Launch Tool** to run it in the live in-app session, **Learn** for its lesson, or **Pin** to keep it in your workspace.
 
@@ -29,6 +29,11 @@ $repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here
 if (Test-Path (Join-Path $repo ".git")) { git -C $repo pull --ff-only } elseif (-not (Test-Path (Join-Path $repo "start_osint_tool.bat"))) { git clone $url $repo }
 Set-Location $repo
 if ($py) { py -3 --version; if ($LASTEXITCODE -ne 0) { throw "Python 3 could not be started. Reinstall Python and enable its launcher/PATH option." }; py -3 -m pip install -r requirements.txt } else { python --version; if ($LASTEXITCODE -ne 0) { throw "Python could not be started. Reinstall Python and enable Add Python to PATH." }; python -m pip install -r requirements.txt }
+$pythonExe = if ($py) { "py" } else { "python" }; $pythonArgs = if ($py) { @("-3") } else { @() }
+$engine = Join-Path $repo "blackbird"
+if (Test-Path (Join-Path $engine ".git")) { git -C $engine pull --ff-only } elseif (-not (Test-Path (Join-Path $engine "blackbird.py"))) { git clone "https://github.com/p1ngul1n0/blackbird.git" $engine }
+$engineRequirements = Join-Path $engine "requirements.txt"
+if (Test-Path $engineRequirements) { $tag = (& $pythonExe @pythonArgs -c "import sys; print(sys.implementation.cache_tag)").Trim(); $target = Join-Path $repo (Join-Path "engine_deps" $tag); New-Item -ItemType Directory -Force $target | Out-Null; $packages = @(Get-Content $engineRequirements | ForEach-Object { $name = ($_ -split '[<>=!~\[]')[0].Trim(); if ($name -match '^[A-Za-z0-9_.-]+$') { $name } }); & $pythonExe @pythonArgs -m pip install --target $target --upgrade @packages; if ($LASTEXITCODE -ne 0) { throw "Blackbird dependencies could not be installed." } }
 Start-Process -FilePath (Join-Path $repo "start_osint_tool.bat") -WorkingDirectory $repo
 ```
 
