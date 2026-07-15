@@ -32,8 +32,10 @@ if ($py) { py -3 --version; if ($LASTEXITCODE -ne 0) { throw "Python 3 could not
 $pythonExe = if ($py) { "py" } else { "python" }; $pythonArgs = if ($py) { @("-3") } else { @() }
 $engine = Join-Path $repo "blackbird"
 if (Test-Path (Join-Path $engine ".git")) { git -C $engine pull --ff-only } elseif (-not (Test-Path (Join-Path $engine "blackbird.py"))) { git clone "https://github.com/p1ngul1n0/blackbird.git" $engine }
+if (-not (Test-Path (Join-Path $engine "blackbird.py"))) { throw "Blackbird was not downloaded. Check Git and your internet connection, then run the block again." }
 $engineRequirements = Join-Path $engine "requirements.txt"
-if (Test-Path $engineRequirements) { $tag = (& $pythonExe @pythonArgs -c "import sys; print(sys.implementation.cache_tag)").Trim(); $target = Join-Path $repo (Join-Path "engine_deps" $tag); New-Item -ItemType Directory -Force $target | Out-Null; $packages = @(Get-Content $engineRequirements | ForEach-Object { $name = ($_ -split '[<>=!~\[]')[0].Trim(); if ($name -match '^[A-Za-z0-9_.-]+$') { $name } }); & $pythonExe @pythonArgs -m pip install --target $target --upgrade @packages; if ($LASTEXITCODE -ne 0) { throw "Blackbird dependencies could not be installed." } }
+if (-not (Test-Path $engineRequirements)) { throw "Blackbird requirements.txt is missing. Delete the blackbird folder and run the block again." }
+$tag = (& $pythonExe @pythonArgs -c "import sys; print(sys.implementation.cache_tag)").Trim(); $target = Join-Path $repo (Join-Path "engine_deps" $tag); New-Item -ItemType Directory -Force $target | Out-Null; $packages = @(Get-Content $engineRequirements | ForEach-Object { $name = ($_ -split '[<>=!~\[]')[0].Trim(); if ($name -match '^[A-Za-z0-9_.-]+$') { $name } }); & $pythonExe @pythonArgs -m pip install --target $target --upgrade @packages; if ($LASTEXITCODE -ne 0) { throw "Blackbird dependencies could not be installed." }
 Start-Process -FilePath (Join-Path $repo "start_osint_tool.bat") -WorkingDirectory $repo
 ```
 
