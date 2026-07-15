@@ -23,8 +23,15 @@ $url = "https://github.com/cros20471/cros-intelligence-console.git"
 $git = Get-Command git -ErrorAction SilentlyContinue
 $py = Get-Command py -ErrorAction SilentlyContinue
 $python = Get-Command python -ErrorAction SilentlyContinue
-if (-not $git) { throw "Git is not installed or is not on PATH. Install Git from https://git-scm.com/download/win, then close and reopen PowerShell." }
-if (-not ($py -or $python)) { throw "Python 3.11 or newer is not installed or is not on PATH. Install it from https://www.python.org/downloads/windows/, then close and reopen PowerShell." }
+if ((-not $git) -or (-not ($py -or $python))) {
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "Git/Python are missing and winget is unavailable. Install Git from https://git-scm.com/download/win and Python from https://www.python.org/downloads/windows/, then reopen PowerShell." }
+  if (-not $git) { winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements }
+  if (-not ($py -or $python)) { winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements }
+  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+  $git = Get-Command git -ErrorAction SilentlyContinue; $py = Get-Command py -ErrorAction SilentlyContinue; $python = Get-Command python -ErrorAction SilentlyContinue
+}
+if (-not $git) { throw "Git installation did not finish. Close and reopen PowerShell, then paste this block again." }
+if (-not ($py -or $python)) { throw "Python installation did not finish. Close and reopen PowerShell, then paste this block again." }
 $here = (Get-Location).Path
 $documents = [Environment]::GetFolderPath("MyDocuments")
 $repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here "start_osint_tool.bat"))) { $here } else { Join-Path $documents "cros-intelligence-console" }
