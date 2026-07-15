@@ -458,12 +458,25 @@
     catch (error) { toast("Could not open research page", error.message, true); }
   }
 
+  function openLensWithSelectedImage() {
+    const file = $("#image-file")?.files?.[0];
+    if (!file) { toast("Choose an image first", "Select an image before opening Google Lens.", true); return; }
+    const form = document.createElement("form");
+    form.action = `https://lens.google.com/v3/upload?ep=ccm&s=&st=${Date.now()}`;
+    form.method = "POST"; form.enctype = "multipart/form-data"; form.target = "_blank"; form.hidden = true;
+    const input = document.createElement("input"); input.type = "file"; input.name = "encoded_image"; input.accept = "image/*";
+    const transfer = new DataTransfer(); transfer.items.add(file); input.files = transfer.files;
+    const dimensions = document.createElement("input"); dimensions.type = "hidden"; dimensions.name = "processed_image_dimensions"; dimensions.value = "1000,1000";
+    form.append(input, dimensions); document.body.append(form); form.submit(); setTimeout(() => form.remove(), 1000);
+    toast("Google Lens opened", "Your selected image was handed to Google Lens in a new tab.");
+  }
+
   function researchButton(item) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "research-link";
     button.innerHTML = `<span>${item.name}</span><b>OPEN ↗</b>`;
-    button.addEventListener("click", () => openResearchUrl(item.url));
+    button.addEventListener("click", () => item.name === "Google Lens" ? openLensWithSelectedImage() : openResearchUrl(item.url));
     return button;
   }
 
@@ -533,9 +546,25 @@
     setWorkspaceTabSize(localStorage.getItem("cros-workspace-tab-size") || "normal", false);
     setWorkspaceHomeView(localStorage.getItem("cros-workspace-home-view") || "research", false);
     setWorkspaceView(state.workspaceHomeView);
+    try { const p = JSON.parse(localStorage.getItem("cros-workspace-position") || "null"); if (p) setWorkspacePosition(Number(p.left), Number(p.top), false); } catch (_) {}
   }
 
   let workspaceResizing = false;
+  let workspaceDragging = false;
+  let workspaceDragOffset = { x: 0, y: 0 };
+  let workspaceFrame = 0;
+  let workspacePending = null;
+  function setWorkspacePosition(left, top, persist = true) {
+    const dock = $("#workspace-dock"), width = dock.getBoundingClientRect().width || 570;
+    dock.style.left = `${Math.max(8, Math.min(innerWidth - width - 8, left))}px`; dock.style.right = "auto";
+    dock.style.top = `${Math.max(8, Math.min(innerHeight - 90, top))}px`; dock.style.bottom = "auto";
+    if (persist) localStorage.setItem("cros-workspace-position", JSON.stringify({ left: parseInt(dock.style.left), top: parseInt(dock.style.top) }));
+  }
+  function handleWorkspaceDrag(event) {
+    if (!workspaceDragging || innerWidth <= 880) return;
+    workspacePending = { left: event.clientX - workspaceDragOffset.x, top: event.clientY - workspaceDragOffset.y };
+    if (!workspaceFrame) workspaceFrame = requestAnimationFrame(() => { workspaceFrame = 0; if (workspacePending) { setWorkspacePosition(workspacePending.left, workspacePending.top); workspacePending = null; } });
+  }
   function handleWorkspaceResize(event) {
     if (!workspaceResizing || innerWidth <= 880) return;
     setWorkspaceWidth(innerWidth - event.clientX);
@@ -549,7 +578,15 @@
 
   function toggleWorkspaceSize() {
     const dock = $("#workspace-dock");
-    const expanded = dock.classList.toggle("expanded");
+    const expanded = !dock.classList.contains("expanded");
+    if (expanded) {
+      dock.classList.add("expanded");
+    } else {
+      dock.classList.remove("expanded");
+      dock.style.right = "auto";
+      dock.style.bottom = "auto";
+      try { const p = JSON.parse(localStorage.getItem("cros-workspace-position") || "null"); if (p) setWorkspacePosition(Number(p.left), Number(p.top), false); } catch (_) {}
+    }
     $("#workspace-size").textContent = expanded ? "▣" : "□";
     $("#workspace-size").setAttribute("aria-label", expanded ? "Restore workspace size" : "Maximize workspace");
   }
@@ -823,6 +860,7 @@
   }
 
   const SVG_NS = "http://www.w3.org/2000/svg";
+  let graphView = { x: 0, y: 0, width: 1000, height: 420 };
   function svgElement(name, attributes = {}) {
     const element = document.createElementNS(SVG_NS, name);
     Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
@@ -860,9 +898,28 @@
     $$(".neural-node", $("#neural-map")).forEach(item => item.classList.toggle("selected", item.dataset.nodeId === id));
   }
 
+  function editSelectedNode() {
+    const node = state.graph.nodes.find(item => item.id === state.selectedNode);
+    if (!node) return;
+    $("#edit-node-label").value = node.label;
+    $("#edit-node-note").value = node.note || "";
+    $("#node-edit-form").hidden = false;
+    $("#edit-node-label").focus();
+  }
+
+  function saveEditedNode(event) {
+    event.preventDefault();
+    const node = state.graph.nodes.find(item => item.id === state.selectedNode);
+    const label = $("#edit-node-label").value.trim();
+    if (!node || !label) return;
+    node.label = label.slice(0, 80); node.note = $("#edit-node-note").value.trim().slice(0, 300);
+    $("#node-edit-form").hidden = true; persistWorkspace(); renderGraph(); selectGraphNode(node.id);
+  }
+
   function renderGraph() {
     const svg = $("#neural-map");
     if (!svg) return;
+    svg.setAttribute("viewBox", `${graphView.x} ${graphView.y} ${graphView.width} ${graphView.height}`);
     svg.replaceChildren();
     const defs = svgElement("defs");
     const filter = svgElement("filter", { id: "node-glow", x: "-80%", y: "-80%", width: "260%", height: "260%" });
@@ -932,6 +989,16 @@
     persistWorkspace();
   }
 
+  function zoomGraph(event) {
+    event.preventDefault();
+    const factor = event.deltaY > 0 ? 1.12 : 0.89;
+    const point = graphPoint(event);
+    const width = Math.max(420, Math.min(1400, graphView.width * factor));
+    const height = Math.max(220, Math.min(700, graphView.height * factor));
+    graphView = { x: Math.max(-200, Math.min(800, point.x - (point.x - graphView.x) * (width / graphView.width))), y: Math.max(-140, Math.min(360, point.y - (point.y - graphView.y) * (height / graphView.height))), width, height };
+    renderGraph();
+  }
+
   function addGraphNode(event) {
     event.preventDefault();
     const label = $("#node-label").value.trim();
@@ -973,12 +1040,14 @@
   function deleteSelectedNode() {
     if (!state.selectedNode) return;
     const id = state.selectedNode;
+    draggingNode = "";
     state.graph.nodes = state.graph.nodes.filter(node => node.id !== id);
     state.graph.edges = state.graph.edges.filter(edge => edge.source !== id && edge.target !== id);
     state.selectedNode = "";
     persistWorkspace();
     renderGraph();
-    selectGraphNode("");
+    $("#map-selection").hidden = true;
+    toast("Node removed", "The node and its connected relationships were removed.");
   }
 
   function toolByKey(key) { return state.tools.find(tool => tool.key === key); }
@@ -1586,6 +1655,10 @@
     $("#node-form").addEventListener("submit", addGraphNode);
     $("#edge-form").addEventListener("submit", addGraphEdge);
     $("#delete-node").addEventListener("click", deleteSelectedNode);
+    $("#edit-node").addEventListener("click", editSelectedNode);
+    $("#node-edit-form").addEventListener("submit", saveEditedNode);
+    $("#cancel-node-edit").addEventListener("click", () => { $("#node-edit-form").hidden = true; });
+    $("#neural-map").addEventListener("wheel", zoomGraph, { passive: false });
     $("#name-search-form").addEventListener("submit", searchNames);
     $("#image-scan-form").addEventListener("submit", scanImage);
     $("#image-file").addEventListener("change", event => { $("#image-file-label").textContent = event.target.files[0]?.name || "Choose image"; });
@@ -1601,15 +1674,17 @@
     $("#workspace-width-control").addEventListener("input", event => setWorkspaceWidth(event.target.value));
     $$('[data-workspace-tab-size]').forEach(button => button.addEventListener("click", () => setWorkspaceTabSize(button.dataset.workspaceTabSize)));
     $("#workspace-home-view").addEventListener("change", event => setWorkspaceHomeView(event.target.value));
-    $("#workspace-resize-handle").addEventListener("pointerdown", event => { event.preventDefault(); workspaceResizing = true; });
+    $("#workspace-resize-handle").addEventListener("pointerdown", event => { event.preventDefault(); event.currentTarget.setPointerCapture?.(event.pointerId); workspaceResizing = true; workspaceDragging = false; });
+    $("#workspace-drag-handle").addEventListener("pointerdown", event => { if (event.target.closest("button")) return; const r = $("#workspace-dock").getBoundingClientRect(); workspaceDragOffset = { x: event.clientX-r.left, y: event.clientY-r.top }; workspaceDragging = true; workspaceResizing = false; event.currentTarget.setPointerCapture?.(event.pointerId); event.preventDefault(); });
     $("#workspace-resize-handle").addEventListener("keydown", event => {
       if (event.key === "ArrowLeft") { event.preventDefault(); resizeWorkspaceBy(24); }
       if (event.key === "ArrowRight") { event.preventDefault(); resizeWorkspaceBy(-24); }
     });
     addEventListener("pointermove", handleGraphPointerMove);
     addEventListener("pointermove", handleWorkspaceResize);
+    addEventListener("pointermove", handleWorkspaceDrag);
     addEventListener("pointerup", finishGraphDrag);
-    addEventListener("pointerup", () => { workspaceResizing = false; });
+    addEventListener("pointerup", () => { workspaceResizing = false; workspaceDragging = false; });
     addEventListener("pointercancel", finishGraphDrag);
     addEventListener("pointercancel", () => { workspaceResizing = false; });
     $$('[data-filter]').forEach(button => button.addEventListener("click", () => setFilter(button.dataset.filter)));
