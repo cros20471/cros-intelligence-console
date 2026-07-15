@@ -157,6 +157,15 @@ def analyze_image_file(path_value: str | Path, *, include_thumbnail: bool = Fals
         except (ImportError, AttributeError, OSError, ValueError):
             face_boxes = []
 
+        ocr_text = ""
+        ocr_engine = "unavailable"
+        try:
+            import pytesseract
+            ocr_text = _safe_text(pytesseract.image_to_string(sample), 4000)
+            ocr_engine = "local-tesseract"
+        except (ImportError, AttributeError, OSError, RuntimeError):
+            pass
+
         thumbnail = ""
         if include_thumbnail:
             preview = working.copy()
@@ -211,5 +220,7 @@ def analyze_image_file(path_value: str | Path, *, include_thumbnail: bool = Fals
         "face_count": len(face_boxes),
         "face_boxes": face_boxes,
         "face_engine": face_engine,
+        "ocr_text": ocr_text,
+        "ocr_engine": ocr_engine,
         "thumbnail": thumbnail,
     }
