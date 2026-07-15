@@ -20,11 +20,17 @@ If Python and Git are already installed, paste this whole block into PowerShell:
 
 ```powershell
 $url = "https://github.com/cros20471/cros-intelligence-console.git"
+$git = Get-Command git -ErrorAction SilentlyContinue
+$py = Get-Command py -ErrorAction SilentlyContinue
+$python = Get-Command python -ErrorAction SilentlyContinue
+if (-not $git) { throw "Git is not installed or is not on PATH. Install Git from https://git-scm.com/download/win, then close and reopen PowerShell." }
+if (-not ($py -or $python)) { throw "Python 3.11 or newer is not installed or is not on PATH. Install it from https://www.python.org/downloads/windows/, then close and reopen PowerShell." }
 $here = (Get-Location).Path
-$repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here "start_osint_tool.bat"))) { $here } else { Join-Path $here "cros-intelligence-console" }
+$documents = [Environment]::GetFolderPath("MyDocuments")
+$repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here "start_osint_tool.bat"))) { $here } else { Join-Path $documents "cros-intelligence-console" }
 if (Test-Path (Join-Path $repo ".git")) { git -C $repo pull --ff-only } elseif (-not (Test-Path (Join-Path $repo "start_osint_tool.bat"))) { git clone $url $repo }
 Set-Location $repo
-if (Get-Command py -ErrorAction SilentlyContinue) { py -3 -m pip install -r requirements.txt } else { python -m pip install -r requirements.txt }
+if ($py) { py -3 --version; if ($LASTEXITCODE -ne 0) { throw "Python 3 could not be started. Reinstall Python and enable its launcher/PATH option." }; py -3 -m pip install -r requirements.txt } else { python --version; if ($LASTEXITCODE -ne 0) { throw "Python could not be started. Reinstall Python and enable Add Python to PATH." }; python -m pip install -r requirements.txt }
 Start-Process -FilePath (Join-Path $repo "start_osint_tool.bat") -WorkingDirectory $repo
 ```
 
