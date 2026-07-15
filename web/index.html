@@ -27,6 +27,8 @@
       <div class="nav-links">
         <button class="nav-link active" data-view="home">Overview</button>
         <button class="nav-link" data-view="pinboard">Pinboard</button>
+        <button class="nav-link" data-view="investigate">Investigate</button>
+        <button class="nav-link" data-view="map">Map</button>
         <button class="nav-link" data-view="tools">Tool Index</button>
         <button class="nav-link" data-view="security">Defense</button>
         <button class="nav-link" data-view="guide">Guide</button>
@@ -111,9 +113,12 @@
 
     <section class="pinboard-section" id="pinboard" aria-labelledby="pinboard-title">
       <div class="section-heading pinboard-heading">
-        <div><span class="section-index">00</span><h2 id="pinboard-title">Your pinboard</h2><p>Keep important links, notes, files, and folders one click away. Pins stay on this computer.</p></div>
-        <span class="pinboard-count" id="pinboard-count">0 ITEMS</span>
+        <div><span class="section-index">00</span><h2 id="pinboard-title">Investigation workspace</h2><p>Pin tools for one-click access and keep durable notes, links, files, and folders beside them.</p></div>
+        <span class="pinboard-count" id="pinboard-count">0 SAVED</span>
       </div>
+      <div class="pinned-tools-head"><div><span>PINNED TOOLS</span><p>Select <b>PIN</b> on any tool card to keep it here.</p></div><button class="text-button" id="browse-tools">BROWSE TOOLS <span>→</span></button></div>
+      <div class="pinned-tool-grid" id="pinned-tool-grid" aria-live="polite"></div>
+      <div class="notes-heading"><span>DURABLE NOTES</span><p>Saved locally in <code>workspace_state.json</code>, even when the app uses a different local port next time.</p></div>
       <form class="pin-form" id="pin-form" autocomplete="off">
         <label><span>LABEL</span><input id="pin-title" maxlength="80" placeholder="Investigation notes"></label>
         <label><span>LINK OR FILE PATH</span><input id="pin-target" maxlength="2048" placeholder="https://example.com or C:\\Cases"></label>
@@ -121,6 +126,60 @@
         <button class="primary-button" type="submit">ADD PIN <span>+</span></button>
       </form>
       <div class="pin-grid" id="pin-grid" aria-live="polite"></div>
+    </section>
+
+    <section class="map-section" id="investigation-map" aria-labelledby="map-title">
+      <div class="section-heading map-heading">
+        <div><span class="section-index">MAP</span><h2 id="map-title">Neural investigation map</h2><p>Lay out people, accounts, domains, locations, and evidence as connected leads. Everything stays local.</p></div>
+        <span class="pinboard-count" id="map-count">0 NODES</span>
+      </div>
+      <div class="map-controls">
+        <form id="node-form" autocomplete="off">
+          <label><span>NEW ENTITY</span><input id="node-label" maxlength="80" placeholder="Name, handle, domain, clue" required></label>
+          <label><span>TYPE</span><select id="node-type"><option value="person">Person</option><option value="account">Account</option><option value="domain">Domain</option><option value="location">Location</option><option value="evidence">Evidence</option><option value="entity">Other entity</option></select></label>
+          <label><span>CONTEXT</span><input id="node-note" maxlength="300" placeholder="Why this lead matters"></label>
+          <button class="primary-button" type="submit">ADD NODE <span>+</span></button>
+        </form>
+        <form id="edge-form" autocomplete="off">
+          <label><span>FROM</span><select id="edge-source" required><option value="">Choose node</option></select></label>
+          <label><span>RELATIONSHIP</span><input id="edge-label" maxlength="60" placeholder="owns, links to, mentions"></label>
+          <label><span>TO</span><select id="edge-target" required><option value="">Choose node</option></select></label>
+          <button class="outline-button" type="submit">CONNECT</button>
+        </form>
+      </div>
+      <div class="neural-map-shell">
+        <svg id="neural-map" viewBox="0 0 1000 560" role="img" aria-labelledby="map-title map-description"><desc id="map-description">Interactive investigation graph. Drag nodes to organize leads and select a node to inspect or remove it.</desc></svg>
+        <div class="map-empty" id="map-empty"><strong>Start with one lead</strong><span>Add an entity above, then connect related clues.</span></div>
+        <aside class="map-selection" id="map-selection" hidden><span>SELECTED NODE</span><strong id="selected-node-label"></strong><small id="selected-node-meta"></small><p id="selected-node-note"></p><button id="delete-node" type="button">REMOVE NODE</button></aside>
+      </div>
+    </section>
+
+    <section class="workbench-section" id="investigation-workbench" aria-labelledby="workbench-title">
+      <div class="section-heading workbench-heading">
+        <div><span class="section-index">LAB</span><h2 id="workbench-title">In-app investigation lab</h2><p>Research names and inspect images without switching to a terminal. Local analysis stays on this computer.</p></div>
+        <span class="pinboard-count">LOCAL-FIRST</span>
+      </div>
+      <div class="workbench-grid">
+        <article class="workbench-panel name-lab">
+          <div class="lab-head"><span>01 / NAME &amp; USERNAME SEARCH</span><h3>Find public account leads</h3><p>Build focused variations and open public profile candidates from one screen.</p></div>
+          <form id="name-search-form" autocomplete="off">
+            <label><span>NAME OR USERNAME</span><input id="name-search-query" maxlength="100" placeholder="handle or public name" required></label>
+            <button class="primary-button" type="submit">SEARCH <span>→</span></button>
+          </form>
+          <div class="lab-loading" id="name-search-loading" hidden>PREPARING PUBLIC LEADS…</div>
+          <div class="name-results" id="name-results" aria-live="polite"><div class="lab-empty"><strong>Search from here</strong><span>No terminal window needed.</span></div></div>
+        </article>
+        <article class="workbench-panel image-lab">
+          <div class="lab-head"><span>02 / IMAGE INVESTIGATOR</span><h3>Inspect a photo locally</h3><p>Choose metadata/location review, face-region detection, or a complete scan. Face detection never identifies a person.</p></div>
+          <form id="image-scan-form" autocomplete="off">
+            <label><span>SCAN MODE</span><select id="image-scan-mode"><option value="full">Complete local scan</option><option value="face">Face-region scan</option><option value="location">Location &amp; metadata scan</option></select></label>
+            <label class="file-picker"><span>IMAGE (10 MB MAX)</span><input id="image-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff" required><b id="image-file-label">Choose image</b></label>
+            <button class="primary-button" type="submit">ANALYZE <span>⌁</span></button>
+          </form>
+          <div class="lab-loading" id="image-scan-loading" hidden>ANALYZING LOCALLY…</div>
+          <div class="image-results" id="image-results" aria-live="polite"><div class="lab-empty"><strong>No image selected</strong><span>The file is analyzed locally and deleted from temporary storage immediately.</span></div></div>
+        </article>
+      </div>
     </section>
 
     <section class="telemetry" aria-labelledby="telemetry-title">
@@ -174,7 +233,7 @@
           <button data-filter="advanced">ADVANCED</button>
           <button data-filter="security">SECURITY</button>
           <button data-filter="local">LOCAL</button>
-          <button data-filter="favorites">SAVED</button>
+          <button data-filter="favorites">PINNED</button>
           <button data-filter="recent">RECENT</button>
         </div>
         <span class="result-count" id="result-count">LOADING INDEX</span>
