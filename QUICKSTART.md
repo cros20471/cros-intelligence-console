@@ -35,7 +35,15 @@ If `python` is not recognized, replace the third line with `py -3 -m pip install
 
 Pinned tools and notes stay in the local `workspace_state.json` file. They persist after the app closes and are not written into this repository or sent to GitHub.
 
-## 3. Build an investigation map
+## 3. Open and resize the investigation workspace
+
+1. Select **Investigate** or **Map** in Cros.
+2. Drag the workspace's left edge to make the panel smaller or larger.
+3. Use the square button to maximize or restore it. Use **X** to collapse it into the small **Open Workspace** button.
+
+The Research, Map, and Tool Session views share this one panel, so they do not take over the main app.
+
+## 4. Build an investigation map
 
 1. Open **Map** and add your first entity, such as a person, account, domain, location, or piece of evidence.
 2. Add related entities.
@@ -44,25 +52,25 @@ Pinned tools and notes stay in the local `workspace_state.json` file. They persi
 
 The map is saved locally with your workspace and excluded from Git.
 
-## 4. Search a name or inspect an image in the app
+## 5. Search a username or inspect an image in the app
 
 1. Open **Investigate**.
-2. Enter a public name or username to prepare profile candidates and focused public-web searches.
+2. Enter a public username. Cros runs the installed Blackbird engine and streams live source checks in **Tool Session**; it does not invent profile links. If Blackbird is missing, run **Account Engine Setup** from the tool index first.
 3. For an image, choose **Complete**, **Face-region**, or **Location & metadata** scan, select a file, and choose **Analyze**.
 4. Review the local findings. Reverse-image buttons open third-party services, but Cros never uploads your selected file automatically.
 
 Face-region mode only detects possible face-shaped regions. It does not identify people. Location mode reports embedded GPS when present and does not guess where a person lives.
 
-## 5. Run a tool safely
+## 6. Run a tool safely
 
 1. Open **Tool Index** and search for a workflow.
 2. Select **Learn** before using an unfamiliar tool.
-3. Select **Launch Tool** and provide only data you are authorized to inspect.
+3. Select **Launch Tool**. Its prompts, live progress bar, elapsed time, and output stay in the resizable Cros workspace; reply with the input field when asked.
 4. Save investigation results outside the application folder when they contain personal or sensitive information.
 
 Only scan systems and accounts you own or have explicit permission to test.
 
-## 6. Keep personal data private
+## 7. Keep personal data private
 
 - Do not commit `.env` files, reports, case notes, exports, keys, or local settings.
 - Review `git status` before every push.

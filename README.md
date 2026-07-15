@@ -2,7 +2,7 @@
 
 A local desktop interface for 92 public-information research, local analysis, and defensive Windows security workflows. It includes account search, network checks, web research, photo metadata, reverse-image workflows, file and indicator analysis, RAT/remote-access heuristics, Defender integration, integrity monitoring, Windows hardening checks, recovery readiness, and privacy-friendly utilities.
 
-The in-app Investigation Lab handles public name/username research and local image analysis without opening a terminal. Image modes include metadata and embedded GPS review, local face-region detection (never identity recognition), file fingerprints, and optional links to third-party reverse-image providers.
+The ChatGPT-style Investigation Workspace is a collapsible, resizable panel for research, the compact investigation map, and live tool sessions. All 92 workflows show their prompts and output inside Cros instead of opening a terminal window. Image modes include metadata and embedded GPS review, local face-region detection (never identity recognition), file fingerprints, and optional links to third-party reverse-image providers.
 
 ## Install and start on Windows
 
@@ -10,7 +10,7 @@ The in-app Investigation Lab handles public name/username research and local ima
 2. Clone this repository and open its folder.
 3. Run `python -m pip install -r requirements.txt`.
 4. Double-click `start_osint_tool.bat`. The local app opens in a dedicated Edge or Chrome app window.
-5. Search the 92-tool index or use the category, Local, Pinned, and Recent filters. Select **Launch Tool** to open it, **Learn** for its in-app lesson, or **Pin** to keep it in your workspace.
+5. Search the 92-tool index or use the category, Local, Pinned, and Recent filters. Select **Launch Tool** to run it in the live in-app session, **Learn** for its lesson, or **Pin** to keep it in your workspace.
 
 ### Copy and paste into PowerShell
 
@@ -25,21 +25,21 @@ python -m pip install -r requirements.txt
 
 If `python` is not recognized, try `py -3 -m pip install -r requirements.txt` instead. If `git` is not recognized, close and reopen PowerShell after installing Git.
 
-`start_terminal_tool.bat` opens the original terminal menus. `install_desktop_launcher.bat` creates a Windows desktop shortcut for the web console.
+`install_desktop_launcher.bat` creates a Windows desktop shortcut for Cros. `start_terminal_tool.bat` remains available only for users who deliberately prefer the original text menu.
 
 New here? Follow the small [Quick Start Tutorial](QUICKSTART.md) to install Cros, pin a tool, add a note, and safely run your first workflow.
 
-The Blackbird account-search engine is optional and is not bundled in this repository. In Terminal Mode, choose its setup workflow to clone Blackbird from its official repository and install its dependencies.
+The Blackbird account-search engine is not bundled in this repository. Run **Account Engine Setup** from the tool index to clone the official Blackbird project and install its dependencies inside the in-app session. Username searches in the Investigation Workspace require that installed engine and stream its live source checks; Cros does not substitute guessed profile URLs.
 
 Select the centered C emblem to open the animated CROS Wing Deck. Appearance settings include six color presets, a custom color picker, glow and motion controls, optional wings and particles, compact cards, three card shapes, and adjustable desktop grid density.
 
 Use **Investigation Workspace** to pin tools for quick access and keep notes, web links, files, and folders beside them. Tool pins and notes are saved locally in `workspace_state.json`, so they remain available after closing and reopening the app—even when Cros starts on a different local port.
 
-Use **Map** to build a neuron-style investigation graph. Add people, accounts, domains, locations, evidence, and other entities; connect them with labeled relationships; then drag the nodes into a useful layout. The graph is saved in the same local workspace file and is never included in the repository.
+Use **Map** in the side workspace to build a compact neuron-style investigation graph. Add people, accounts, domains, locations, evidence, and other entities; connect them with labeled relationships; then drag the smaller nodes into a useful layout. Drag the workspace's left edge to make it narrow or wide, use the square button to maximize it, or close it to a small restore button. The graph is saved in the same local workspace file and is never included in the repository.
 
-Use **Investigate** for name and image workflows that stay in the app. Name search prepares focused username variations, public profile candidates, and targeted web searches. Image Investigator accepts files up to 10 MB, analyzes a temporary copy locally, and deletes that copy immediately. Reverse-image buttons open provider upload pages but never upload the selected file automatically.
+Use **Investigate** for username and image workflows that stay in the app. Username Search and Username Combinations run the installed Blackbird engine and display only its live output. Image Investigator accepts files up to 10 MB, analyzes a temporary copy locally, and deletes that copy immediately. Reverse-image buttons open provider upload pages but never upload the selected file automatically.
 
-The app listens only on `127.0.0.1`, uses a random session token, validates and limits uploads, shuts down after inactivity, and does not require an internet-hosted account. `start_terminal_tool.bat` remains available as a direct terminal fallback for legacy workflows.
+The app listens only on `127.0.0.1`, uses a random session token, validates and limits uploads, shuts down after inactivity, and does not require an internet-hosted account. In-app tool processes are allowlisted, hidden from the Windows terminal, streamed into Cros in real time, and stopped with their child processes when you select **Stop** or close the app.
 
 Use **Change Color** to set the wing/title color and one shared border color for all three main boxes. Preferences are saved beside the program in `settings.json`.
 

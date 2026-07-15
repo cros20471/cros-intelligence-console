@@ -262,46 +262,14 @@ def username_variants(value: str) -> list[str]:
     return result[:16]
 
 
-def username_fallback_search(values: list[str]) -> None:
-    """Provide a useful public-web workflow when the optional engine is absent."""
-    values = [value for value in values if valid_username(value)][:16]
-    if not values:
-        console.print("[red]No valid username values were supplied.[/]")
-        pause()
-        return
-    primary = values[0]
-    profiles = [
-        ("GitHub", f"https://github.com/{primary}"),
-        ("Reddit", f"https://www.reddit.com/user/{primary}"),
-        ("X", f"https://x.com/{primary}"),
-        ("Instagram", f"https://www.instagram.com/{primary}/"),
-        ("TikTok", f"https://www.tiktok.com/@{primary}"),
-        ("YouTube", f"https://www.youtube.com/@{primary}"),
-    ]
-    result = Table(title="PUBLIC USERNAME RESEARCH STARTERS")
-    result.add_column("Source"); result.add_column("Candidate URL", overflow="fold")
-    for row in profiles: result.add_row(*row)
-    console.print(result)
-    console.print("[yellow]These are candidate addresses, not confirmed accounts. Compare public profile details before linking identities.[/]")
-    if Confirm.ask("Open one focused public-web search?", default=True):
-        quoted = " OR ".join(f'\"{value}\"' for value in values[:8])
-        sites = "site:github.com OR site:reddit.com OR site:x.com OR site:instagram.com OR site:tiktok.com OR site:youtube.com"
-        webbrowser.open("https://www.google.com/search?q=" + quote_plus(f"({quoted}) ({sites})"))
-    pause()
-
-
 def run_blackbird(kind: str, values: list[str], *, permute: bool = False) -> None:
     script = find_blackbird()
     if not script:
-        if kind == "username":
-            console.print("[yellow]The optional account engine is not installed. Using the built-in public-web workflow instead.[/]")
-            username_fallback_search(values)
-        else:
-            console.print("[yellow]The account-search engine is not installed. Choose Engine setup.[/]")
-            pause()
+        console.print("[red]Blackbird is not installed in the Cros folder. Use Account Engine Setup, then run this search again.[/]")
+        pause()
         return
     flag = "--username" if kind == "username" else "--email"
-    command = [sys.executable, str(script), flag, *values]
+    command = [sys.executable, "-u", str(script), flag, *values]
     if permute:
         command.append("--permuteall")
     command += ["--timeout", str(settings["blackbird_timeout"]),
@@ -310,7 +278,8 @@ def run_blackbird(kind: str, values: list[str], *, permute: bool = False) -> Non
         command.append("--no-nsfw")
     if settings["blackbird_no_update"]:
         command.append("--no-update")
-    exports = Prompt.ask("Export", choices=["none", "json", "csv", "pdf"], default="none")
+    embedded = os.environ.get("CROS_EMBEDDED") == "1"
+    exports = "none" if embedded else Prompt.ask("Export", choices=["none", "json", "csv", "pdf"], default="none")
     if exports != "none":
         command.append(f"--{exports}")
     console.print(f"\n[bold {settings['theme']}]Starting account search…[/]\n")
@@ -320,14 +289,28 @@ def run_blackbird(kind: str, values: list[str], *, permute: bool = False) -> Non
         child_env["PYTHONPATH"] = str(ENGINE_DEPS_DIR) + (os.pathsep + existing_path if existing_path else "")
         child_env["PYTHONUTF8"] = "1"
         child_env["PYTHONIOENCODING"] = "utf-8"
-        result = run_with_loading("Searching public sources", lambda: subprocess.run(
-            command, cwd=script.parent, check=False, capture_output=True,
-            text=True, errors="replace", env=child_env))
-        output = clean_engine_output("\n".join(part for part in (result.stdout, result.stderr) if part))
-        if output:
-            console.print(output, markup=False)
-        if result.returncode:
-            console.print(f"[yellow]The search engine exited with code {result.returncode}. Run diagnostics for details.[/]")
+        if embedded:
+            console.print("[cyan]Blackbird is checking live public sources. Results will stream here as they arrive.[/]")
+            process = subprocess.Popen(command, cwd=script.parent, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                       text=True, errors="replace", env=child_env, bufsize=1)
+            if process.stdout:
+                for line in process.stdout:
+                    output = clean_engine_output(line)
+                    if output:
+                        console.print(output, markup=False)
+            returncode = process.wait()
+            if returncode:
+                console.print(f"[yellow]The search engine exited with code {returncode}. Run diagnostics for details.[/]")
+                raise RuntimeError(f"Blackbird exited with code {returncode}")
+        else:
+            result = run_with_loading("Searching public sources", lambda: subprocess.run(
+                command, cwd=script.parent, check=False, capture_output=True,
+                text=True, errors="replace", env=child_env))
+            output = clean_engine_output("\n".join(part for part in (result.stdout, result.stderr) if part))
+            if output:
+                console.print(output, markup=False)
+            if result.returncode:
+                console.print(f"[yellow]The search engine exited with code {result.returncode}. Run diagnostics for details.[/]")
     except OSError as exc:
         console.print(f"[red]Could not start the account-search engine: {exc}[/]")
     pause()
@@ -348,7 +331,7 @@ def username_search(combos: bool = False) -> None:
 
 
 def email_search() -> None:
-    email = Prompt.ask("Email").strip()
+    email = os.environ.pop("CROS_EMAIL", "").strip() or Prompt.ask("Email").strip()
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         console.print("[red]That does not look like a valid email address.[/]"); pause(); return
     run_blackbird("email", [email])
@@ -442,12 +425,34 @@ def wayback() -> None:
     webbrowser.open("https://web.archive.org/web/*/" + target)
 
 
+def install_blackbird_requirements(requirements: Path) -> int:
+    ENGINE_DEPS_DIR.mkdir(parents=True, exist_ok=True)
+    command = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check",
+               "--target", str(ENGINE_DEPS_DIR), "--upgrade"]
+    if sys.version_info >= (3, 14):
+        packages = []
+        try:
+            for line in requirements.read_text(encoding="utf-8").splitlines():
+                name = re.split(r"[<>=!~\[]", line.strip(), maxsplit=1)[0]
+                if re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+                    packages.append(name)
+        except OSError as exc:
+            console.print(f"[red]Could not read Blackbird requirements: {exc}[/]")
+            return 1
+        command.extend(packages)
+        console.print("[yellow]Python 3.14 detected; installing current compatible dependency builds.[/]")
+    else:
+        command.extend(["-r", str(requirements)])
+    return subprocess.run(command, check=False).returncode
+
+
 def blackbird_setup() -> None:
     script = find_blackbird()
     if script:
         console.print(f"[green]Account-search engine found:[/] {script}")
         if Confirm.ask("Install/update its Python requirements now?", default=False):
-            subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(script.parent / "requirements.txt")], check=False)
+            code = install_blackbird_requirements(script.parent / "requirements.txt")
+            console.print("[green]Blackbird dependencies are ready.[/]" if code == 0 else "[red]Dependency installation did not finish successfully.[/]")
     else:
         destination = APP_DIR / "blackbird"
         console.print("The account-search engine was not found in the configured/common locations.")
@@ -457,7 +462,8 @@ def blackbird_setup() -> None:
             else:
                 result = subprocess.run(["git", "clone", "https://github.com/p1ngul1n0/blackbird", str(destination)], check=False)
                 if result.returncode == 0:
-                    subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(destination / "requirements.txt")], check=False)
+                    code = install_blackbird_requirements(destination / "requirements.txt")
+                    console.print("[green]Blackbird is installed and ready.[/]" if code == 0 else "[red]Blackbird was cloned, but dependency installation failed.[/]")
     pause()
 
 
@@ -1109,6 +1115,8 @@ def open_tutorial() -> None:
 def launch_security_center() -> None:
     try:
         import security_tools
+        if os.environ.get("CROS_EMBEDDED") == "1":
+            security_tools.webbrowser.open = lambda url, *_args, **_kwargs: (console.print(f"\nExternal research link (copy when needed):\n{url}\n", markup=False) or True)
         security_tools.security_center(str(settings.get("panel_color", "cyan")))
     except ImportError as exc:
         console.print(f"[red]Security Center could not load: {exc}[/]"); pause()

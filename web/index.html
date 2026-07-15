@@ -128,7 +128,7 @@
       <div class="pin-grid" id="pin-grid" aria-live="polite"></div>
     </section>
 
-    <section class="map-section" id="investigation-map" aria-labelledby="map-title">
+    <section class="map-section" id="investigation-map" data-workspace-panel="map" aria-labelledby="map-title" hidden>
       <div class="section-heading map-heading">
         <div><span class="section-index">MAP</span><h2 id="map-title">Neural investigation map</h2><p>Lay out people, accounts, domains, locations, and evidence as connected leads. Everything stays local.</p></div>
         <span class="pinboard-count" id="map-count">0 NODES</span>
@@ -148,26 +148,26 @@
         </form>
       </div>
       <div class="neural-map-shell">
-        <svg id="neural-map" viewBox="0 0 1000 560" role="img" aria-labelledby="map-title map-description"><desc id="map-description">Interactive investigation graph. Drag nodes to organize leads and select a node to inspect or remove it.</desc></svg>
+        <svg id="neural-map" viewBox="0 0 1000 420" role="img" aria-labelledby="map-title map-description"><desc id="map-description">Interactive investigation graph. Drag nodes to organize leads and select a node to inspect or remove it.</desc></svg>
         <div class="map-empty" id="map-empty"><strong>Start with one lead</strong><span>Add an entity above, then connect related clues.</span></div>
         <aside class="map-selection" id="map-selection" hidden><span>SELECTED NODE</span><strong id="selected-node-label"></strong><small id="selected-node-meta"></small><p id="selected-node-note"></p><button id="delete-node" type="button">REMOVE NODE</button></aside>
       </div>
     </section>
 
-    <section class="workbench-section" id="investigation-workbench" aria-labelledby="workbench-title">
+    <section class="workbench-section" id="investigation-workbench" data-workspace-panel="research" aria-labelledby="workbench-title" hidden>
       <div class="section-heading workbench-heading">
         <div><span class="section-index">LAB</span><h2 id="workbench-title">In-app investigation lab</h2><p>Research names and inspect images without switching to a terminal. Local analysis stays on this computer.</p></div>
         <span class="pinboard-count">LOCAL-FIRST</span>
       </div>
       <div class="workbench-grid">
         <article class="workbench-panel name-lab">
-          <div class="lab-head"><span>01 / NAME &amp; USERNAME SEARCH</span><h3>Find public account leads</h3><p>Build focused variations and open public profile candidates from one screen.</p></div>
+          <div class="lab-head"><span>01 / BLACKBIRD USERNAME SEARCH</span><h3>Find verified public results</h3><p>Run the installed Blackbird engine inside Cros. Results come from live source checks—not guessed profile links.</p></div>
           <form id="name-search-form" autocomplete="off">
-            <label><span>NAME OR USERNAME</span><input id="name-search-query" maxlength="100" placeholder="handle or public name" required></label>
-            <button class="primary-button" type="submit">SEARCH <span>→</span></button>
+            <label><span>USERNAME</span><input id="name-search-query" maxlength="64" pattern="[A-Za-z0-9_.-]{1,64}" placeholder="public handle" required></label>
+            <button class="primary-button" type="submit">RUN BLACKBIRD <span>→</span></button>
           </form>
-          <div class="lab-loading" id="name-search-loading" hidden>PREPARING PUBLIC LEADS…</div>
-          <div class="name-results" id="name-results" aria-live="polite"><div class="lab-empty"><strong>Search from here</strong><span>No terminal window needed.</span></div></div>
+          <div class="lab-loading" id="name-search-loading" hidden>STARTING BLACKBIRD…</div>
+          <div class="name-results" id="name-results" aria-live="polite"><div class="lab-empty"><strong>Live results only</strong><span>Blackbird must be installed in the Cros folder. The search runs inside this panel.</span></div></div>
         </article>
         <article class="workbench-panel image-lab">
           <div class="lab-head"><span>02 / IMAGE INVESTIGATOR</span><h3>Inspect a photo locally</h3><p>Choose metadata/location review, face-region detection, or a complete scan. Face detection never identifies a person.</p></div>
@@ -221,7 +221,7 @@
       <div class="section-heading">
         <div><span class="section-index">02</span><h2 id="tools-title">Tool index</h2><p>Every workflow is one launch away. Use only on systems and data you are authorized to inspect.</p></div>
         <div class="tool-controls">
-          <button class="outline-button" id="terminal-button">TERMINAL MODE</button>
+          <button class="outline-button" id="terminal-button">ALL TOOLS IN APP</button>
           <button class="outline-button" id="guide-button">LEARNING CENTER</button>
         </div>
       </div>
@@ -283,6 +283,33 @@
       </div>
     </section>
   </main>
+
+  <aside class="workspace-dock" id="workspace-dock" aria-label="Investigation workspace" aria-hidden="true" hidden>
+    <button class="workspace-resize-handle" id="workspace-resize-handle" aria-label="Resize investigation workspace" aria-description="Drag horizontally or use the left and right arrow keys"></button>
+    <header class="workspace-dock-head">
+      <div><span>IN-APP WORKSPACE</span><h2>Investigate</h2></div>
+      <div class="workspace-dock-actions"><button id="workspace-size" aria-label="Maximize workspace">□</button><button id="workspace-close" aria-label="Close workspace">×</button></div>
+    </header>
+    <nav class="workspace-tabs" aria-label="Workspace views">
+      <button class="active" data-workspace-tab="research">RESEARCH</button>
+      <button data-workspace-tab="map">MAP</button>
+      <button data-workspace-tab="session">TOOL SESSION</button>
+    </nav>
+    <div class="workspace-dock-content" id="workspace-dock-content">
+      <section class="tool-session-panel" id="tool-session-panel" data-workspace-panel="session" hidden aria-labelledby="session-title">
+        <header class="session-head"><div><span>RUNNING INSIDE CROS</span><h3 id="session-title">Tool session</h3></div><strong id="session-status">READY</strong></header>
+        <div class="session-progress" id="session-progress" role="progressbar" aria-label="Tool progress" aria-valuetext="Ready"><i></i><b></b></div>
+        <div class="session-meta"><span id="session-stage">Choose any tool to start</span><span id="session-time">0.0s</span></div>
+        <pre class="session-output" id="session-output" aria-live="polite">Tool output will appear here in real time.</pre>
+        <form class="session-input-form" id="session-input-form" autocomplete="off">
+          <label><span>REPLY TO TOOL</span><input id="session-input" placeholder="Type an answer when the tool asks" maxlength="4096"></label>
+          <button type="submit" class="primary-button">SEND</button>
+          <button type="button" class="outline-button" id="session-stop">STOP</button>
+        </form>
+      </section>
+    </div>
+  </aside>
+  <button class="workspace-restore" id="workspace-restore" hidden>OPEN WORKSPACE</button>
 
   <footer>
     <div class="footer-brand"><span class="brand-mark small"><span>C</span></span><div><strong>CROS // INTELLIGENCE CONSOLE</strong><small>Local defensive research workstation</small></div></div>

@@ -46,6 +46,12 @@
     graph: { nodes: [], edges: [] },
     selectedNode: "",
     imageResult: null,
+    workspaceView: "research",
+    identityToolId: "1",
+    sessionId: "",
+    sessionOffset: 0,
+    sessionPoll: 0,
+    sessionDone: true,
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -254,17 +260,20 @@
   async function launchTool(toolOrKey) {
     const tool = typeof toolOrKey === "string" ? state.tools.find(item => item.key === toolOrKey) : toolOrKey;
     if (!tool) return;
-    if (["osint:1", "osint:2", "osint:3"].includes(tool.key)) {
+    if (["osint:1", "osint:2"].includes(tool.key)) {
       recordRecent(tool);
-      $("#investigation-workbench").scrollIntoView({ behavior: "smooth", block: "start" });
-      setTimeout(() => $("#name-search-query").focus(), 450);
-      toast("Opened in-app name search", "Enter a public name, username, or email to begin.");
+      state.identityToolId = tool.id;
+      openWorkspace("research");
+      setTimeout(() => $("#name-search-query").focus(), 180);
+      toast("Blackbird ready", tool.id === "2"
+        ? "Enter a username to check focused variations against live public sources."
+        : "Enter a username to run live public-source checks inside Cros.");
       closeCommand();
       return;
     }
     if (tool.key === "osint:15") {
       recordRecent(tool);
-      $("#investigation-workbench").scrollIntoView({ behavior: "smooth", block: "start" });
+      openWorkspace("research");
       toast("Opened local image investigator", "Choose a photo for local analysis.");
       closeCommand();
       return;
@@ -275,14 +284,9 @@
       closeCommand();
       return;
     }
-    try {
-      await api("/api/launch", { method: "POST", body: JSON.stringify({ category: tool.category, id: tool.id }) });
-      recordRecent(tool);
-      toast("Tool launched", `${tool.name} opened in a dedicated result window.`);
-      closeCommand();
-    } catch (error) {
-      toast("Launch blocked", error.message, true);
-    }
+    recordRecent(tool);
+    closeCommand();
+    startToolSession(tool.category, tool.id, { title: tool.name });
   }
 
   function setFilter(filter) {
@@ -460,38 +464,170 @@
     return button;
   }
 
+  function setWorkspaceView(view) {
+    state.workspaceView = ["research", "map", "session"].includes(view) ? view : "research";
+    $$('[data-workspace-tab]').forEach(button => {
+      const active = button.dataset.workspaceTab === state.workspaceView;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    $$('[data-workspace-panel]').forEach(panel => { panel.hidden = panel.dataset.workspacePanel !== state.workspaceView; });
+    if (state.workspaceView === "map") renderGraph();
+  }
+
+  function openWorkspace(view = state.workspaceView) {
+    const dock = $("#workspace-dock");
+    dock.hidden = false;
+    dock.setAttribute("aria-hidden", "false");
+    $("#workspace-restore").hidden = true;
+    setWorkspaceView(view);
+  }
+
+  function closeWorkspace() {
+    const dock = $("#workspace-dock");
+    dock.hidden = true;
+    dock.setAttribute("aria-hidden", "true");
+    $("#workspace-restore").hidden = false;
+  }
+
+  function setupWorkspaceDock() {
+    const content = $("#workspace-dock-content");
+    content.prepend($("#investigation-workbench"), $("#investigation-map"));
+    const savedWidth = Math.max(340, Math.min(900, Number(localStorage.getItem("cros-workspace-width")) || 570));
+    document.documentElement.style.setProperty("--workspace-width", `${savedWidth}px`);
+    setWorkspaceView("research");
+  }
+
+  let workspaceResizing = false;
+  function handleWorkspaceResize(event) {
+    if (!workspaceResizing || innerWidth <= 880) return;
+    const width = Math.max(340, Math.min(Math.min(900, innerWidth - 20), innerWidth - event.clientX));
+    document.documentElement.style.setProperty("--workspace-width", `${width}px`);
+    localStorage.setItem("cros-workspace-width", String(Math.round(width)));
+  }
+
+  function resizeWorkspaceBy(delta) {
+    if (innerWidth <= 880) return;
+    const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--workspace-width")) || 570;
+    const width = Math.max(340, Math.min(Math.min(900, innerWidth - 20), current + delta));
+    document.documentElement.style.setProperty("--workspace-width", `${width}px`);
+    localStorage.setItem("cros-workspace-width", String(Math.round(width)));
+  }
+
+  function toggleWorkspaceSize() {
+    const dock = $("#workspace-dock");
+    const expanded = dock.classList.toggle("expanded");
+    $("#workspace-size").textContent = expanded ? "▣" : "□";
+    $("#workspace-size").setAttribute("aria-label", expanded ? "Restore workspace size" : "Maximize workspace");
+  }
+
+  function formatSessionTime(milliseconds) {
+    return `${(Math.max(0, milliseconds) / 1000).toFixed(1)}s`;
+  }
+
+  function updateSessionProgress(payload = {}) {
+    const progress = $("#session-progress");
+    const done = Boolean(payload.done);
+    const failed = done && Number(payload.returncode || 0) !== 0;
+    progress.classList.toggle("running", !done);
+    progress.classList.toggle("complete", done && !failed);
+    progress.classList.toggle("failed", failed);
+    progress.setAttribute("aria-valuetext", !done ? "Running live" : failed ? "Finished with an error" : "Complete");
+    $("#session-status").textContent = !done ? "LIVE" : failed ? "REVIEW" : "COMPLETE";
+    $("#session-stage").textContent = payload.stage || (!done ? "Working" : "Complete");
+    $("#session-time").textContent = formatSessionTime(payload.elapsed_ms || 0);
+  }
+
+  async function pollToolSession() {
+    if (!state.sessionId) return;
+    const sessionId = state.sessionId;
+    try {
+      const payload = await api(`/api/session?id=${encodeURIComponent(sessionId)}&offset=${state.sessionOffset}`);
+      if (sessionId !== state.sessionId) return;
+      if (payload.output) {
+        const output = $("#session-output");
+        if (state.sessionOffset === 0) output.textContent = "";
+        output.textContent += payload.output.replace(/\r(?!\n)/g, "\n");
+        output.scrollTop = output.scrollHeight;
+      }
+      state.sessionOffset = Number(payload.next_offset || state.sessionOffset);
+      state.sessionDone = Boolean(payload.done);
+      updateSessionProgress(payload);
+      if (!state.sessionDone) state.sessionPoll = setTimeout(pollToolSession, 350);
+    } catch (error) {
+      state.sessionDone = true;
+      updateSessionProgress({ done: true, returncode: 1, stage: error.message });
+      toast("Tool session stopped", error.message, true);
+    }
+  }
+
+  async function stopActiveSession(showNotice = true) {
+    clearTimeout(state.sessionPoll);
+    if (!state.sessionId || state.sessionDone) return;
+    try {
+      await api("/api/session/stop", { method: "POST", body: JSON.stringify({ session_id: state.sessionId }) });
+      if (showNotice) toast("Stopping tool", "The in-app session is closing safely.");
+      setTimeout(pollToolSession, 120);
+    } catch (error) {
+      if (showNotice) toast("Could not stop tool", error.message, true);
+    }
+  }
+
+  async function startToolSession(category, id, options = {}) {
+    await stopActiveSession(false);
+    clearTimeout(state.sessionPoll);
+    openWorkspace("session");
+    $("#session-title").textContent = options.title || "Tool session";
+    $("#session-output").textContent = "Starting inside Cros…";
+    state.sessionId = "";
+    state.sessionOffset = 0;
+    state.sessionDone = false;
+    updateSessionProgress({ done: false, stage: "Starting local tool", elapsed_ms: 0 });
+    try {
+      const payload = await api("/api/session/start", {
+        method: "POST",
+        body: JSON.stringify({ category, id, username: options.username || "" }),
+      });
+      state.sessionId = payload.id;
+      pollToolSession();
+    } catch (error) {
+      state.sessionDone = true;
+      $("#session-output").textContent = error.message;
+      updateSessionProgress({ done: true, returncode: 1, stage: "Could not start" });
+      toast("Launch blocked", error.message, true);
+    }
+  }
+
+  async function sendSessionInput(event) {
+    event.preventDefault();
+    const input = $("#session-input");
+    if (!state.sessionId || state.sessionDone || !input.value) return;
+    try {
+      await api("/api/session/input", { method: "POST", body: JSON.stringify({ session_id: state.sessionId, input: input.value }) });
+      input.value = "";
+      input.focus();
+    } catch (error) {
+      toast("Input was not sent", error.message, true);
+    }
+  }
+
   async function searchNames(event) {
     event.preventDefault();
     const query = $("#name-search-query").value.trim();
     if (!query) return;
     $("#name-search-loading").hidden = false;
     try {
-      const result = await api("/api/name-search", { method: "POST", body: JSON.stringify({ query }) });
       const root = $("#name-results");
       root.replaceChildren();
-      if (result.variants?.length) {
-        const block = document.createElement("section");
-        block.className = "result-block";
-        const heading = document.createElement("h4"); heading.textContent = "FOCUSED USERNAME VARIATIONS";
-        const chips = document.createElement("div"); chips.className = "variant-chips";
-        result.variants.forEach(value => { const chip = document.createElement("span"); chip.textContent = value; chips.append(chip); });
-        block.append(heading, chips); root.append(block);
-      }
-      if (result.profiles?.length) {
-        const block = document.createElement("section"); block.className = "result-block";
-        const heading = document.createElement("h4"); heading.textContent = "PUBLIC PROFILE CANDIDATES";
-        const grid = document.createElement("div"); grid.className = "research-link-grid";
-        result.profiles.forEach(item => grid.append(researchButton(item)));
-        block.append(heading, grid); root.append(block);
-      }
-      const searchBlock = document.createElement("section"); searchBlock.className = "result-block";
-      const searchHeading = document.createElement("h4"); searchHeading.textContent = "FOCUSED WEB SEARCHES";
-      const searchGrid = document.createElement("div"); searchGrid.className = "research-link-grid";
-      (result.searches || []).forEach(item => searchGrid.append(researchButton(item)));
-      const notice = document.createElement("p"); notice.className = "result-notice"; notice.textContent = result.notice;
-      searchBlock.append(searchHeading, searchGrid); root.append(searchBlock, notice);
+      const status = document.createElement("div");
+      status.className = "blackbird-live-note";
+      status.innerHTML = "<strong>BLACKBIRD LIVE SESSION</strong><span>Results are streaming in Tool Session. Only accounts returned by the installed engine are shown.</span>";
+      root.append(status);
+      const toolId = state.identityToolId === "2" ? "2" : "1";
+      const label = toolId === "2" ? "Blackbird variations" : "Blackbird";
+      await startToolSession("osint", toolId, { username: query, title: `${label} · ${query}` });
     } catch (error) {
-      toast("Name search unavailable", error.message, true);
+      toast("Blackbird search unavailable", error.message, true);
     } finally {
       $("#name-search-loading").hidden = true;
     }
@@ -639,10 +775,11 @@
       }
     });
     state.graph.nodes.forEach(node => {
+      node.y = Math.max(32, Math.min(388, Number(node.y) || 210));
       const group = svgElement("g", { class: `neural-node type-${node.type}${state.selectedNode === node.id ? " selected" : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": `${node.label}, ${node.type}` });
       group.dataset.nodeId = node.id;
-      group.append(svgElement("circle", { r: "34" }), svgElement("circle", { r: "23", class: "node-core" }));
-      const label = svgElement("text", { y: "52", "text-anchor": "middle" });
+      group.append(svgElement("circle", { r: "24" }), svgElement("circle", { r: "15", class: "node-core" }));
+      const label = svgElement("text", { y: "39", "text-anchor": "middle" });
       label.textContent = node.label.length > 22 ? `${node.label.slice(0, 20)}…` : node.label;
       const kind = svgElement("text", { y: "5", class: "node-kind", "text-anchor": "middle" });
       kind.textContent = node.type.slice(0, 3).toUpperCase();
@@ -671,7 +808,7 @@
     if (!node) return;
     const point = graphPoint(event);
     node.x = Math.max(48, Math.min(952, Math.round(point.x)));
-    node.y = Math.max(48, Math.min(512, Math.round(point.y)));
+    node.y = Math.max(32, Math.min(388, Math.round(point.y)));
     renderGraph();
   }
 
@@ -694,7 +831,7 @@
       type: $("#node-type").value,
       note: $("#node-note").value.trim(),
       x: Math.round(500 + Math.cos(angle) * radius),
-      y: Math.round(280 + Math.sin(angle) * radius),
+      y: Math.round(210 + Math.sin(angle) * Math.min(radius, 160)),
     });
     event.currentTarget.reset();
     persistWorkspace();
@@ -1342,9 +1479,23 @@
     $("#image-scan-form").addEventListener("submit", scanImage);
     $("#image-file").addEventListener("change", event => { $("#image-file-label").textContent = event.target.files[0]?.name || "Choose image"; });
     $("#image-scan-mode").addEventListener("change", renderImageResult);
+    $("#session-input-form").addEventListener("submit", sendSessionInput);
+    $("#session-stop").addEventListener("click", () => stopActiveSession(true));
+    $$('[data-workspace-tab]').forEach(button => button.addEventListener("click", () => setWorkspaceView(button.dataset.workspaceTab)));
+    $("#workspace-close").addEventListener("click", closeWorkspace);
+    $("#workspace-restore").addEventListener("click", () => openWorkspace());
+    $("#workspace-size").addEventListener("click", toggleWorkspaceSize);
+    $("#workspace-resize-handle").addEventListener("pointerdown", event => { event.preventDefault(); workspaceResizing = true; });
+    $("#workspace-resize-handle").addEventListener("keydown", event => {
+      if (event.key === "ArrowLeft") { event.preventDefault(); resizeWorkspaceBy(24); }
+      if (event.key === "ArrowRight") { event.preventDefault(); resizeWorkspaceBy(-24); }
+    });
     addEventListener("pointermove", handleGraphPointerMove);
+    addEventListener("pointermove", handleWorkspaceResize);
     addEventListener("pointerup", finishGraphDrag);
+    addEventListener("pointerup", () => { workspaceResizing = false; });
     addEventListener("pointercancel", finishGraphDrag);
+    addEventListener("pointercancel", () => { workspaceResizing = false; });
     $$('[data-filter]').forEach(button => button.addEventListener("click", () => setFilter(button.dataset.filter)));
     $("#lesson-search").addEventListener("input", event => { state.lessonQuery = event.target.value; renderLessonList(); });
     $$('[data-lesson-filter]').forEach(button => button.addEventListener("click", () => {
@@ -1369,7 +1520,7 @@
     });
     addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); openCommand(); }
-      if (event.key === "Escape") { closeCommand(); $("#detail-layer").hidden = true; $("#settings-drawer").classList.remove("open"); }
+      if (event.key === "Escape") { closeCommand(); $("#detail-layer").hidden = true; $("#settings-drawer").classList.remove("open"); closeWorkspace(); }
     });
     $("#settings-button").addEventListener("click", () => $("#settings-drawer").classList.add("open"));
     $("#search-settings").addEventListener("click", () => $("#settings-drawer").classList.add("open"));
@@ -1401,8 +1552,8 @@
       $$('[data-view]').forEach(item => item.classList.toggle("active", item === button));
       if (view === "home") scrollTo({ top: 0, behavior: "smooth" });
       if (view === "pinboard") $("#pinboard").scrollIntoView({ behavior: "smooth", block: "start" });
-      if (view === "investigate") $("#investigation-workbench").scrollIntoView({ behavior: "smooth", block: "start" });
-      if (view === "map") $("#investigation-map").scrollIntoView({ behavior: "smooth", block: "start" });
+      if (view === "investigate") openWorkspace("research");
+      if (view === "map") openWorkspace("map");
       if (view === "tools") {
         setFilter("all");
         $("#tools").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1419,10 +1570,7 @@
       }
     }));
     $$('[data-scroll]').forEach(button => button.addEventListener("click", () => scrollTo({ top: 0, behavior: "smooth" })));
-    $("#terminal-button").addEventListener("click", async () => {
-      try { await api("/api/launch", { method: "POST", body: JSON.stringify({ category: "terminal", id: "main" }) }); toast("Terminal mode launched", "The original wings and complete menu are open."); }
-      catch (error) { toast("Launch blocked", error.message, true); }
-    });
+    $("#terminal-button").addEventListener("click", () => startToolSession("terminal", "main", { title: "Complete Cros menu" }));
     $("#guide-button").addEventListener("click", () => openLearning("", "tutorials"));
     $$('[data-open]').forEach(button => button.addEventListener("click", () => openTarget(button.dataset.open)));
     $("#exit-button").addEventListener("click", async () => { try { await api("/api/shutdown", { method: "POST", body: "{}" }); } catch (_) {} window.close(); });
@@ -1434,6 +1582,7 @@
   }
 
   async function init() {
+    setupWorkspaceDock();
     restoreSettings();
     renderPins();
     renderPinnedTools();

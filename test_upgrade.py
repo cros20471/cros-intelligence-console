@@ -35,9 +35,9 @@ class CatalogTests(unittest.TestCase):
         html = (web / "index.html").read_text(encoding="utf-8")
         script = (web / "app.js").read_text(encoding="utf-8")
         styles = (web / "styles.css").read_text(encoding="utf-8")
-        for marker in ('id="tool-count-hero">92</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"'):
+        for marker in ('id="tool-count-hero">92</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"'):
             self.assertIn(marker, html)
-        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames"):
+        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession"):
             self.assertIn(marker, script)
         self.assertIn("content-visibility: auto", styles)
         self.assertIn("body.fixed-columns .tool-grid", styles)
@@ -94,7 +94,7 @@ class ToolSmokeTests(unittest.TestCase):
 
 
 class ApiTests(unittest.TestCase):
-    def test_workspace_and_name_search_are_sanitized(self) -> None:
+    def test_workspace_and_session_inputs_are_sanitized(self) -> None:
         cleaned = app_server.clean_workspace_state({
             "favorite_tools": ["osint:1", "missing:999"],
             "graph": {"nodes": [{"id": "n1", "label": "Lead", "type": "person", "x": -50, "y": 900}],
@@ -102,10 +102,10 @@ class ApiTests(unittest.TestCase):
         })
         self.assertEqual(["osint:1"], cleaned["favorite_tools"])
         self.assertEqual(40.0, cleaned["graph"]["nodes"][0]["x"])
+        self.assertEqual(388.0, cleaned["graph"]["nodes"][0]["y"])
         self.assertEqual([], cleaned["graph"]["edges"])
-        result = app_server.name_search_payload("cros_test")
-        self.assertIn("cros_test", result["variants"])
-        self.assertEqual(6, len(result["profiles"]))
+        with self.assertRaises(ValueError):
+            app_server.start_tool_session("osint", "1", username="bad name")
 
     def test_catalog_and_learning_api(self) -> None:
         server = app_server.CrosServer(("127.0.0.1", 0), app_server.Handler)

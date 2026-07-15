@@ -5,10 +5,12 @@ from __future__ import annotations
 import concurrent.futures
 import base64
 import binascii
+import codecs
 import json
 import mimetypes
 import os
 import platform
+import re
 import secrets
 import struct
 import subprocess
@@ -42,6 +44,9 @@ WORKSPACE_STATE_LOCK = threading.Lock()
 APP_ICON_FILE = WEB_DIR / "cros.ico"
 APP_LOGO_FILE = WEB_DIR / "cros-logo.png"
 APP_ICON_HANDLES: list[int] = []
+TOOL_SESSIONS: dict[str, dict] = {}
+TOOL_SESSIONS_LOCK = threading.Lock()
+ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 def touch() -> None:
     global LAST_SEEN
     with LAST_SEEN_LOCK:
@@ -115,9 +120,9 @@ def clean_workspace_state(value: object) -> dict:
             continue
         try:
             x = min(960.0, max(40.0, float(item.get("x", 500))))
-            y = min(520.0, max(40.0, float(item.get("y", 280))))
+            y = min(388.0, max(32.0, float(item.get("y", 210))))
         except (TypeError, ValueError):
-            x, y = 500.0, 280.0
+            x, y = 500.0, 210.0
         node_ids.add(node_id)
         nodes.append({"id": node_id, "label": label, "type": _short_text(item.get("type"), 24) or "entity",
                       "note": _short_text(item.get("note"), 300), "x": x, "y": y})
@@ -178,42 +183,6 @@ def open_pinned_target(raw_target: object) -> None:
     if not path.exists():
         raise ValueError("That file or folder does not exist")
     os.startfile(str(path.resolve()))  # type: ignore[attr-defined]
-
-
-def name_search_payload(raw_query: object) -> dict:
-    query = _short_text(raw_query, 100)
-    if not query:
-        raise ValueError("Enter a name or username")
-    username = query.lstrip("@").strip()
-    if not all(char.isalnum() or char in "._-" for char in username) or len(username) > 64:
-        username = ""
-    variants = []
-    if username and " " not in query:
-        chunks = [part for part in username.lower().replace("-", ".").replace("_", ".").split(".") if part]
-        compact = "".join(chunks)
-        for candidate in [username.lower(), compact, ".".join(chunks), "_".join(chunks), "-".join(chunks),
-                          f"the{compact}", f"real{compact}", f"{compact}official"]:
-            if candidate and candidate not in variants:
-                variants.append(candidate)
-    encoded = urllib.parse.quote_plus(query)
-    searches = [
-        {"name": "Google", "url": f"https://www.google.com/search?q={encoded}"},
-        {"name": "Bing", "url": f"https://www.bing.com/search?q={encoded}"},
-        {"name": "DuckDuckGo", "url": f"https://duckduckgo.com/?q={encoded}"},
-        {"name": "GitHub code and profiles", "url": f"https://github.com/search?q={encoded}&type=users"},
-    ]
-    profiles = []
-    if username:
-        profiles = [
-            {"name": "GitHub", "url": f"https://github.com/{username}"},
-            {"name": "Reddit", "url": f"https://www.reddit.com/user/{username}"},
-            {"name": "X", "url": f"https://x.com/{username}"},
-            {"name": "Instagram", "url": f"https://www.instagram.com/{username}/"},
-            {"name": "TikTok", "url": f"https://www.tiktok.com/@{username}"},
-            {"name": "YouTube", "url": f"https://www.youtube.com/@{username}"},
-        ]
-    return {"query": query, "variants": variants[:12], "profiles": profiles, "searches": searches,
-            "notice": "Candidate links are leads, not confirmed identity matches. Compare multiple public details before connecting accounts."}
 
 
 ALLOWED_WEB_HOSTS = {
@@ -492,6 +461,159 @@ def launch_tool(category: str, tool_id: str) -> None:
     )
 
 
+def _clean_session_text(value: str) -> str:
+    value = ANSI_ESCAPE.sub("", value).replace("\x00", "")
+    return "".join(char for char in value if char in "\n\r\t" or ord(char) >= 32)
+
+
+def _append_session_output(session_id: str, text: str) -> None:
+    if not text:
+        return
+    cleaned = _clean_session_text(text)
+    with TOOL_SESSIONS_LOCK:
+        session = TOOL_SESSIONS.get(session_id)
+        if not session:
+            return
+        session["output"] += cleaned
+        lines = [line.strip() for line in cleaned.replace("\r", "\n").splitlines() if line.strip()]
+        if lines:
+            session["stage"] = lines[-1][:180]
+        if len(session["output"]) > 500_000:
+            removed = len(session["output"]) - 400_000
+            session["output"] = session["output"][removed:]
+            session["base_offset"] += removed
+
+
+def _read_tool_session(session_id: str) -> None:
+    with TOOL_SESSIONS_LOCK:
+        session = TOOL_SESSIONS.get(session_id)
+        process = session.get("process") if session else None
+    if not process or not process.stdout:
+        return
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    try:
+        while True:
+            chunk = process.stdout.read(256)
+            if not chunk:
+                break
+            _append_session_output(session_id, decoder.decode(chunk))
+        _append_session_output(session_id, decoder.decode(b"", final=True))
+    except (OSError, ValueError) as exc:
+        _append_session_output(session_id, f"\nSession output error: {exc}\n")
+    finally:
+        process.wait()
+        with TOOL_SESSIONS_LOCK:
+            session = TOOL_SESSIONS.get(session_id)
+            if session:
+                session["ended"] = time.monotonic()
+                session["returncode"] = process.returncode
+
+
+def start_tool_session(category: str, tool_id: str, *, username: str = "") -> dict:
+    category = str(category).lower().strip()
+    tool_id = str(tool_id).strip()
+    allowed = category == "terminal" and tool_id == "main" or f"{category}:{tool_id}" in TOOL_KEYS
+    if not allowed:
+        raise ValueError("Tool is not in the local allowlist")
+    username = username.strip().lstrip("@")[:64]
+    if username and not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", username):
+        raise ValueError("Use 1–64 letters, numbers, dots, underscores, or hyphens")
+    if username and not (category == "osint" and tool_id in {"1", "2"}):
+        raise ValueError("A username can only be supplied to a Blackbird username workflow")
+
+    with TOOL_SESSIONS_LOCK:
+        finished = sorted((value for value in TOOL_SESSIONS.values() if value.get("ended")), key=lambda item: item["ended"])
+        while len(TOOL_SESSIONS) >= 8 and finished:
+            TOOL_SESSIONS.pop(finished.pop(0)["id"], None)
+        if len(TOOL_SESSIONS) >= 8:
+            raise ValueError("Close or stop an existing tool session first")
+
+    env = os.environ.copy()
+    env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "CROS_EMBEDDED": "1"})
+    if username:
+        env["CROS_USERNAME"] = username
+        env["CROS_REQUIRE_BLACKBIRD"] = "1"
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    process = subprocess.Popen(
+        [console_python(), "-u", str(APP_DIR / "tool_runner.py"), category, tool_id],
+        cwd=str(APP_DIR), env=env, creationflags=flags, close_fds=True,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0,
+    )
+    session_id = uuid.uuid4().hex
+    session = {"id": session_id, "category": category, "tool_id": tool_id, "process": process,
+               "output": "", "base_offset": 0, "started": time.monotonic(), "ended": None,
+               "returncode": None, "stage": "Starting local tool"}
+    with TOOL_SESSIONS_LOCK:
+        TOOL_SESSIONS[session_id] = session
+    threading.Thread(target=_read_tool_session, args=(session_id,), daemon=True).start()
+    return {"id": session_id, "category": category, "tool_id": tool_id}
+
+
+def tool_session_payload(session_id: str, offset: int = 0) -> dict:
+    with TOOL_SESSIONS_LOCK:
+        session = TOOL_SESSIONS.get(session_id)
+        if not session:
+            raise ValueError("Tool session was not found")
+        process = session["process"]
+        done = session["ended"] is not None or process.poll() is not None
+        base_offset = session["base_offset"]
+        absolute_offset = max(base_offset, int(offset))
+        relative_offset = absolute_offset - base_offset
+        output = session["output"][relative_offset:]
+        next_offset = base_offset + len(session["output"])
+        elapsed = ((session["ended"] or time.monotonic()) - session["started"])
+        returncode = session["returncode"] if session["returncode"] is not None else process.poll()
+        stage = session["stage"]
+    if int(offset) < base_offset:
+        output = "[Earlier output was trimmed]\n" + output
+    return {"id": session_id, "output": output, "next_offset": next_offset, "done": done,
+            "returncode": returncode, "elapsed_ms": int(elapsed * 1000),
+            "stage": (("Complete" if returncode == 0 else "Stopped with an error") if done else stage)[:180]}
+
+
+def send_tool_session_input(session_id: str, value: object) -> None:
+    text = str(value or "").replace("\r", " ").replace("\n", " ")[:4096]
+    with TOOL_SESSIONS_LOCK:
+        session = TOOL_SESSIONS.get(session_id)
+        process = session.get("process") if session else None
+    if not process or process.poll() is not None or not process.stdin:
+        raise ValueError("That tool session is no longer accepting input")
+    process.stdin.write((text + "\n").encode("utf-8"))
+    process.stdin.flush()
+
+
+def _terminate_process_tree(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False,
+        )
+    else:
+        process.terminate()
+
+
+def stop_tool_session(session_id: str) -> None:
+    with TOOL_SESSIONS_LOCK:
+        session = TOOL_SESSIONS.get(session_id)
+        process = session.get("process") if session else None
+    if not process:
+        raise ValueError("Tool session was not found")
+    _terminate_process_tree(process)
+
+
+def stop_all_tool_sessions() -> None:
+    with TOOL_SESSIONS_LOCK:
+        processes = [session["process"] for session in TOOL_SESSIONS.values()]
+    for process in processes:
+        try:
+            _terminate_process_tree(process)
+        except OSError:
+            pass
+
+
 def status_payload() -> dict:
     import security_tools
 
@@ -614,6 +736,16 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             self.json_response(read_workspace_state())
             return
+        if route == "/api/session":
+            if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            try:
+                session_id = str(query.get("id", [""])[0])
+                offset = int(query.get("offset", ["0"])[0])
+                self.json_response(tool_session_payload(session_id, offset))
+            except (TypeError, ValueError) as exc:
+                self.json_response({"error": str(exc)}, 400)
+            return
         if route == "/api/status":
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             try: self.json_response(status_payload())
@@ -658,9 +790,26 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
         route = urllib.parse.urlsplit(self.path).path
         body = self.read_json(16_500_000 if route == "/api/image-analyze" else 262_144)
-        if route == "/api/name-search":
-            try: self.json_response(name_search_payload(body.get("query")))
-            except ValueError as exc: self.json_response({"error": str(exc)}, 400)
+        if route == "/api/session/start":
+            try:
+                self.json_response(start_tool_session(body.get("category", ""), body.get("id", ""),
+                                                      username=str(body.get("username", ""))))
+            except (OSError, ValueError) as exc:
+                self.json_response({"error": str(exc)}, 400)
+            return
+        if route == "/api/session/input":
+            try:
+                send_tool_session_input(str(body.get("session_id", "")), body.get("input", ""))
+                self.json_response({"ok": True})
+            except (OSError, ValueError) as exc:
+                self.json_response({"error": str(exc)}, 400)
+            return
+        if route == "/api/session/stop":
+            try:
+                stop_tool_session(str(body.get("session_id", "")))
+                self.json_response({"ok": True})
+            except ValueError as exc:
+                self.json_response({"error": str(exc)}, 400)
             return
         if route == "/api/image-analyze":
             try: self.json_response(analyze_uploaded_image(body))
@@ -718,6 +867,7 @@ class Handler(BaseHTTPRequestHandler):
             self.json_response({"ok": True})
             return
         if route == "/api/shutdown":
+            stop_all_tool_sessions()
             self.json_response({"ok": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
@@ -740,7 +890,9 @@ def main() -> None:
     threading.Thread(target=idle_monitor, daemon=True).start()
     threading.Thread(target=lambda: (time.sleep(0.25), open_local_app(url)), daemon=True).start()
     try: server.serve_forever(poll_interval=0.5)
-    finally: server.server_close()
+    finally:
+        stop_all_tool_sessions()
+        server.server_close()
 
 
 if __name__ == "__main__":
