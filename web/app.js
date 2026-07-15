@@ -938,7 +938,18 @@
     $$(".neural-node", $("#neural-map")).forEach(item => item.classList.toggle("selected", item.dataset.nodeId === id));
   }
 
-  function buildLocationHypotheses(event) { event.preventDefault(); const region = $("#location-region").value.trim(), clues = $("#location-clues").value.trim(); if (!clues) return; const root = $("#location-results"); root.replaceChildren(); const title = document.createElement("strong"); title.textContent = "RESEARCH LEADS"; const note = document.createElement("p"); note.textContent = "Use these clues as hypotheses. Verify with maps, official venue pages, street-level context, and multiple independent sources."; const list = document.createElement("ul"); const items = [region ? `Start with public places in ${region} matching the visible clues.` : "Identify the broad region from language, road markings, architecture, and terrain.", "Search distinctive sign text in quotes and compare official pages or map listings.", "Cross-check candidate landmarks against building shape, road layout, weather, and image date."]; items.forEach(text => { const li = document.createElement("li"); li.textContent = text; list.append(li); }); root.append(title, note, list); }
+  const REGION_ALIASES = new Map([["cali", "California"], ["calif", "California"], ["ca", "California"], ["california", "California"], ["ny", "New York"], ["tx", "Texas"], ["fl", "Florida"], ["usa", "United States"], ["us", "United States"], ["uk", "United Kingdom"], ["england", "United Kingdom"], ["au", "Australia"], ["mx", "Mexico"]]);
+  function normalizeRegion(value) { const clean = value.trim().replace(/\s+/g, " "); if (!clean) return ""; return REGION_ALIASES.get(clean.toLowerCase()) || clean; }
+  function setupRegionAssistant() {
+    const input = $("#location-region"); if (!input) return;
+    input.setAttribute("list", "location-region-options");
+    const datalist = document.createElement("datalist"); datalist.id = "location-region-options";
+    ["California", "United States", "Canada", "United Kingdom", "Australia", "Mexico", "New York", "Texas", "Florida", "Los Angeles, California", "San Francisco, California", "Toronto, Canada", "London, United Kingdom"].forEach(value => { const option = document.createElement("option"); option.value = value; datalist.append(option); });
+    document.body.append(datalist);
+    const hint = document.createElement("small"); hint.className = "field-hint"; hint.textContent = "Suggestions appear as you type. Shortcuts like Cali and CA are expanded."; input.parentElement.append(hint);
+    input.addEventListener("blur", () => { input.value = normalizeRegion(input.value); });
+  }
+  function buildLocationHypotheses(event) { event.preventDefault(); const region = normalizeRegion($("#location-region").value); $("#location-region").value = region; const clues = $("#location-clues").value.trim(); if (!clues) return; const root = $("#location-results"); root.replaceChildren(); const title = document.createElement("strong"); title.textContent = "RESEARCH LEADS"; const note = document.createElement("p"); note.textContent = "Use these clues as hypotheses. Verify with maps, official venue pages, street-level context, and multiple independent sources."; const list = document.createElement("ul"); const items = [region ? `Start with public places in ${region} matching the visible clues.` : "Identify the broad region from language, road markings, architecture, and terrain.", "Search distinctive sign text in quotes and compare official pages or map listings.", "Cross-check candidate landmarks against building shape, road layout, weather, and image date."]; items.forEach(text => { const li = document.createElement("li"); li.textContent = text; list.append(li); }); root.append(title, note, list); }
 
   function editSelectedNode() {
     const node = state.graph.nodes.find(item => item.id === state.selectedNode);
@@ -1731,6 +1742,7 @@
     $("#image-file").addEventListener("change", event => { $("#image-file-label").textContent = event.target.files[0]?.name || "Choose image"; });
     $("#image-scan-mode").addEventListener("change", renderImageResult);
     $("#location-form").addEventListener("submit", buildLocationHypotheses);
+    setupRegionAssistant();
     $("#session-input-form").addEventListener("submit", sendSessionInput);
     $("#session-stop").addEventListener("click", () => stopActiveSession(true));
     $("#session-view-map").addEventListener("click", () => openWorkspace("map"));
