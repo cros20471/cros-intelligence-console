@@ -1611,6 +1611,14 @@
     if (save) localStorage.setItem("cros-light-smoothing", String(smoothing));
   }
 
+  function setStarBrightness(value, save = true) {
+    const brightness = Math.max(30, Math.min(240, Number(value) || 120));
+    document.documentElement.style.setProperty("--star-brightness", String(brightness / 100));
+    $("#star-brightness").value = String(brightness);
+    $("#star-brightness-output").textContent = `${brightness}%`;
+    if (save) localStorage.setItem("cros-star-brightness", String(brightness));
+  }
+
   function setShape(shape, save = true) {
     const radii = { soft: "17px", sharp: "6px", round: "26px" };
     const selected = radii[shape] ? shape : "soft";
@@ -1650,6 +1658,7 @@
     setMotion(localStorage.getItem("cros-motion") || 100, false);
     setParticleDensity(localStorage.getItem("cros-particle-density") || 100, false);
     setLightSmoothing(localStorage.getItem("cros-light-smoothing") || 75, false);
+    setStarBrightness(localStorage.getItem("cros-star-brightness") || 120, false);
     setShape(localStorage.getItem("cros-shape") || "soft", false);
     setColumns(localStorage.getItem("cros-columns") || "auto", false);
   }
@@ -1702,9 +1711,11 @@
         const distance = Math.hypot(pointer.x - particle.x, pointer.y - particle.y);
         const boost = distance < 150 ? (150 - distance) / 150 : 0;
         context.beginPath(); context.arc(particle.x, particle.y, particle.r + boost * 1.2, 0, Math.PI * 2);
-        const smoothness = Number(getComputedStyle(document.documentElement).getPropertyValue("--light-smoothing")) || .75;
+        const rootStyle = getComputedStyle(document.documentElement);
+        const smoothness = Number(rootStyle.getPropertyValue("--light-smoothing")) || .75;
+        const brightness = Number(rootStyle.getPropertyValue("--star-brightness")) || 1.2;
         const shimmer = .82 + Math.sin(now * .0012 + index) * .18 * smoothness;
-        context.fillStyle = `rgba(${accent},${Math.min(1, (particle.a * shimmer) + boost * .35)})`; context.fill();
+        context.fillStyle = `rgba(${accent},${Math.min(1, ((particle.a * shimmer) + boost * .35) * brightness)})`; context.fill();
         if (index % 7 === 0 && boost > .25) {
           context.beginPath(); context.moveTo(particle.x, particle.y); context.lineTo(pointer.x, pointer.y);
           context.strokeStyle = `rgba(${accent},${boost * .08})`; context.stroke();
@@ -1824,10 +1835,11 @@
     $("#motion-range").addEventListener("input", event => setMotion(event.target.value));
     $("#particle-density").addEventListener("input", event => setParticleDensity(event.target.value));
     $("#light-smoothing").addEventListener("input", event => setLightSmoothing(event.target.value));
+    $("#star-brightness").addEventListener("input", event => setStarBrightness(event.target.value));
     $$('[data-shape]').forEach(button => button.addEventListener("click", () => setShape(button.dataset.shape)));
     $$('[data-columns]').forEach(button => button.addEventListener("click", () => setColumns(button.dataset.columns)));
     $("#reset-appearance").addEventListener("click", () => {
-      ["cros-accent", "cros-custom-accent", "cros-particles", "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-shape", "cros-columns"].forEach(key => localStorage.removeItem(key));
+      ["cros-accent", "cros-custom-accent", "cros-particles", "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns"].forEach(key => localStorage.removeItem(key));
       document.body.classList.remove("no-particles", "no-wings", "compact", "fixed-columns");
       restoreSettings();
       renderTools();
