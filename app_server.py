@@ -231,6 +231,15 @@ def write_workspace_state(value: object) -> dict:
     return cleaned
 
 
+def clear_local_data() -> None:
+    """Remove only Cros-generated local state; never touch user files."""
+    for path in (WORKSPACE_STATE_FILE, LEARNING_PROGRESS_FILE, APP_DIR / "settings.json"):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def console_python() -> str:
     executable = Path(sys.executable)
     if executable.name.lower() == "pythonw.exe":
@@ -793,6 +802,10 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/workspace":
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             self.json_response(read_workspace_state())
+            return
+        if route == "/api/clear-local-data":
+            clear_local_data()
+            self.json_response({"ok": True})
             return
         if route == "/api/session":
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
