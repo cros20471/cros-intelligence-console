@@ -35,9 +35,9 @@ class CatalogTests(unittest.TestCase):
         html = (web / "index.html").read_text(encoding="utf-8")
         script = (web / "app.js").read_text(encoding="utf-8")
         styles = (web / "styles.css").read_text(encoding="utf-8")
-        for marker in ('id="tool-count-hero">92</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"'):
+        for marker in ('id="tool-count-hero">92</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"', 'id="workspace-customize"', 'id="workspace-width-control"', 'data-workspace-tab-size="large"'):
             self.assertIn(marker, html)
-        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession"):
+        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession", "setWorkspaceTabSize", "setWorkspaceHomeView"):
             self.assertIn(marker, script)
         self.assertIn("content-visibility: auto", styles)
         self.assertIn("body.fixed-columns .tool-grid", styles)
