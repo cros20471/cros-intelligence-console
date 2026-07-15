@@ -4,11 +4,7 @@ cd /d "%~dp0"
 chcp 65001 >nul
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
-set "BUNDLED_PYTHON=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
-if exist "%BUNDLED_PYTHON%" (
-  "%BUNDLED_PYTHON%" osint_tool.py
-  goto :done
-)
+if exist "%~dp0python\python.exe" ( "%~dp0python\python.exe" osint_tool.py & goto :done )
 where py >nul 2>nul
 if not errorlevel 1 (
   py -3 osint_tool.py
