@@ -543,13 +543,25 @@
     const content = $("#workspace-dock-content");
     content.prepend($("#investigation-workbench"), $("#investigation-map"));
     setWorkspaceWidth(localStorage.getItem("cros-workspace-width") || 570, false);
+    const savedHeight = Number(localStorage.getItem("cros-workspace-height"));
+    if (savedHeight >= 360) $("#workspace-dock").style.height = `${Math.min(savedHeight, innerHeight - 16)}px`;
     setWorkspaceTabSize(localStorage.getItem("cros-workspace-tab-size") || "normal", false);
     setWorkspaceHomeView(localStorage.getItem("cros-workspace-home-view") || "research", false);
     setWorkspaceView(state.workspaceHomeView);
+    try { const v = JSON.parse(localStorage.getItem("cros-map-view") || "null"); if (v && v.width) graphView = v; } catch (_) {}
+    if (window.ResizeObserver) new ResizeObserver(() => {
+      const dock = $("#workspace-dock");
+      if (!dock.classList.contains("expanded") && dock.clientHeight >= 360) localStorage.setItem("cros-workspace-height", String(dock.clientHeight));
+    }).observe($("#workspace-dock"));
     try { const p = JSON.parse(localStorage.getItem("cros-workspace-position") || "null"); if (p) setWorkspacePosition(Number(p.left), Number(p.top), false); } catch (_) {}
   }
 
   let workspaceResizing = false;
+  let railResizing = false;
+  let railAutoCloseTimer = 0;
+  function toggleNavigation() { document.body.classList.toggle("rail-collapsed"); localStorage.setItem("cros-rail-collapsed", document.body.classList.contains("rail-collapsed") ? "1" : "0"); }
+  function scheduleRailClose() { clearTimeout(railAutoCloseTimer); const delay = Number(localStorage.getItem("cros-rail-autoclose") ?? 3000); if (delay > 0 && innerWidth >= 1100) railAutoCloseTimer = setTimeout(() => { document.body.classList.add("rail-collapsed"); localStorage.setItem("cros-rail-collapsed", "1"); }, delay); }
+  function handleRailResize(event) { if (!railResizing || innerWidth < 1100) return; const width = Math.max(190, Math.min(420, event.clientX - 12)); document.documentElement.style.setProperty("--rail-width", `${width}px`); localStorage.setItem("cros-rail-width", String(width)); }
   let workspaceDragging = false;
   let workspaceDragOffset = { x: 0, y: 0 };
   let workspaceFrame = 0;
@@ -568,6 +580,18 @@
   function handleWorkspaceResize(event) {
     if (!workspaceResizing || innerWidth <= 880) return;
     setWorkspaceWidth(innerWidth - event.clientX);
+  }
+  function handleWorkspaceViewportChange() {
+    const dock = $("#workspace-dock");
+    if (!dock || dock.hidden) return;
+    if (innerWidth <= 880) { dock.style.left = "4px"; dock.style.right = "4px"; dock.style.top = "4px"; dock.style.bottom = "4px"; dock.style.width = "auto"; dock.style.height = "auto"; return; }
+    if (!dock.classList.contains("expanded")) {
+      const rect = dock.getBoundingClientRect();
+      const saved = JSON.parse(localStorage.getItem("cros-workspace-position") || "null");
+      setWorkspacePosition(Number(saved?.left ?? rect.left), Number(saved?.top ?? rect.top), false);
+      const height = Number(localStorage.getItem("cros-workspace-height"));
+      if (height >= 360) dock.style.height = `${Math.min(height, innerHeight - 16)}px`;
+    }
   }
 
   function resizeWorkspaceBy(delta) {
@@ -740,6 +764,9 @@
         body: JSON.stringify({ category, id, username: options.username || "" }),
       });
       state.sessionId = payload.id;
+      if (category === "osint" && String(id) === "4") {
+        await openResearchUrl("https://haveibeenpwned.com/NotifyMe");
+      }
       pollToolSession();
     } catch (error) {
       state.sessionDone = true;
@@ -829,6 +856,10 @@
       }
     }
     if (mode !== "location") { const faceNote = document.createElement("p"); faceNote.className = "analysis-note"; faceNote.textContent = result.face_note; summary.append(faceNote); }
+    const ocr = document.createElement("div"); ocr.className = "ocr-result";
+    const ocrTitle = document.createElement("h4"); ocrTitle.textContent = "VISIBLE TEXT (OCR)";
+    const ocrBody = document.createElement("p"); ocrBody.textContent = result.ocr_text || "No local OCR engine was available or no readable text was found.";
+    ocr.append(ocrTitle, ocrBody); summary.append(ocr);
     const reverse = document.createElement("div"); reverse.className = "reverse-searches";
     const reverseTitle = document.createElement("h4"); reverseTitle.textContent = "OPTIONAL REVERSE-IMAGE SEARCH";
     const reverseNote = document.createElement("p"); reverseNote.textContent = "These providers are third parties. Opening one does not upload this file automatically; choose the image there only if you accept that provider’s privacy terms.";
@@ -996,6 +1027,7 @@
     const width = Math.max(420, Math.min(1400, graphView.width * factor));
     const height = Math.max(220, Math.min(700, graphView.height * factor));
     graphView = { x: Math.max(-200, Math.min(800, point.x - (point.x - graphView.x) * (width / graphView.width))), y: Math.max(-140, Math.min(360, point.y - (point.y - graphView.y) * (height / graphView.height))), width, height };
+    localStorage.setItem("cros-map-view", JSON.stringify(graphView));
     renderGraph();
   }
 
@@ -1687,6 +1719,7 @@
     addEventListener("pointerup", () => { workspaceResizing = false; workspaceDragging = false; });
     addEventListener("pointercancel", finishGraphDrag);
     addEventListener("pointercancel", () => { workspaceResizing = false; });
+    addEventListener("resize", handleWorkspaceViewportChange);
     $$('[data-filter]').forEach(button => button.addEventListener("click", () => setFilter(button.dataset.filter)));
     $("#lesson-search").addEventListener("input", event => { state.lessonQuery = event.target.value; renderLessonList(); });
     $$('[data-lesson-filter]').forEach(button => button.addEventListener("click", () => {
@@ -1702,6 +1735,16 @@
     $("#posture-details").addEventListener("click", () => { $("#detail-layer").hidden = false; });
     $$('[data-close-detail]').forEach(button => button.addEventListener("click", () => { $("#detail-layer").hidden = true; }));
     $("#command-button").addEventListener("click", () => openCommand());
+    $(".brand")?.addEventListener("click", event => { event.preventDefault(); toggleNavigation(); });
+    const railWidth = Number(localStorage.getItem("cros-rail-width"));
+    if (railWidth >= 190) document.documentElement.style.setProperty("--rail-width", `${Math.min(420, railWidth)}px`);
+    if (localStorage.getItem("cros-rail-collapsed") === "1") document.body.classList.add("rail-collapsed");
+    $("#rail-autoclose").value = localStorage.getItem("cros-rail-autoclose") ?? "3000";
+    $("#rail-autoclose").addEventListener("change", event => localStorage.setItem("cros-rail-autoclose", event.target.value));
+    $("#rail-resize-handle").addEventListener("pointerdown", event => { railResizing = true; event.currentTarget.setPointerCapture?.(event.pointerId); event.preventDefault(); });
+    addEventListener("pointermove", handleRailResize);
+    addEventListener("pointerup", () => { railResizing = false; });
+    $$('[data-view]').forEach(button => button.addEventListener("click", scheduleRailClose));
     $$('[data-close-command]').forEach(button => button.addEventListener("click", closeCommand));
     $("#command-search").addEventListener("input", () => { state.commandIndex = 0; renderCommandResults(); });
     $("#command-search").addEventListener("keydown", event => {
@@ -1711,9 +1754,14 @@
     });
     addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); openCommand(); }
+      if (event.key.toLowerCase() === "c" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) { event.preventDefault(); openWorkspace(); $("[data-workspace-tab].active")?.focus(); }
       if (event.key === "Escape") { closeCommand(); $("#detail-layer").hidden = true; $("#settings-drawer").classList.remove("open"); closeWorkspace(); }
     });
-    $("#settings-button").addEventListener("click", () => $("#settings-drawer").classList.add("open"));
+    $("#settings-button").addEventListener("click", () => {
+      const drawer = $("#settings-drawer");
+      drawer.classList.toggle("open");
+      drawer.setAttribute("aria-hidden", String(!drawer.classList.contains("open")));
+    });
     $("#search-settings").addEventListener("click", () => $("#settings-drawer").classList.add("open"));
     $("#settings-close").addEventListener("click", () => $("#settings-drawer").classList.remove("open"));
     $$('[data-accent]').forEach(button => button.addEventListener("click", () => setAccent(button.dataset.accent)));
@@ -1731,6 +1779,14 @@
       restoreSettings();
       renderTools();
       toast("Appearance reset", "The original CROS interface settings are restored.");
+    });
+    $("#clear-local-data").addEventListener("click", async () => {
+      if (!confirm("Clear Cros saved pins, notes, map data, lessons, and preferences?")) return;
+      try {
+        await api("/api/clear-local-data", { method: "POST", body: "{}" });
+        Object.keys(localStorage).filter(key => key.startsWith("cros-")).forEach(key => localStorage.removeItem(key));
+        toast("Local data cleared", "Cros saved state and preferences were removed.");
+      } catch (error) { toast("Could not clear local data", error.message, true); }
     });
     $("#wing-core").addEventListener("click", () => toggleWingDeck());
     $("#wing-tools").addEventListener("click", () => {
