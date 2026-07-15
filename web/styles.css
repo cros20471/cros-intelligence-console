@@ -744,6 +744,15 @@ body.no-wings .wing-deck { display: none; }
 .ocr-result h4 { margin:0 0 7px; color:var(--accent-soft); font:700 8px/1 var(--mono); letter-spacing:.1em; }
 .ocr-result p { margin:0; color:#c8c3d2; font:500 11px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
 .danger-action { color:#ff8c9a !important; border-color:rgba(255,100,120,.28) !important; }
+.hibp-guide-panel { width:min(620px,calc(100vw - 32px)); }
+.hibp-intro { color:#aaa6b8; line-height:1.55; }
+.hibp-steps { display:grid; gap:11px; margin:18px 0; padding-left:25px; color:#ddd9e7; line-height:1.5; }
+.hibp-steps li::marker { color:var(--accent-soft); font-weight:700; }
+.hibp-get-key { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border:1px solid rgba(var(--accent-rgb),.35); border-radius:9px; background:rgba(var(--accent-rgb),.1); color:var(--accent-soft); font:700 9px/1 var(--mono); text-decoration:none; }
+.hibp-guide-field { display:grid; gap:7px; margin-top:16px; color:var(--muted); font:700 8px/1 var(--mono); letter-spacing:.1em; }
+.hibp-guide-field input { height:44px; box-sizing:border-box; width:100%; border:1px solid var(--line); border-radius:9px; padding:0 12px; background:#080910; color:#f2eff8; font:500 12px var(--mono); }
+.hibp-save { width:100%; margin-top:14px; }
+.hibp-privacy { display:block; margin-top:12px; color:#777486; text-align:center; font-size:10px; }
 .workspace-dock { overflow:hidden; }
 .workspace-dock-content { overflow-x:hidden; overflow-y:auto; }
 .brand { cursor:pointer; outline:none; }
