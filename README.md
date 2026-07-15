@@ -10,6 +10,19 @@ A local desktop interface for 92 public-information research, local analysis, an
 4. Double-click `start_osint_tool.bat`. The local app opens in a dedicated Edge or Chrome app window.
 5. Search the 92-tool index or use the category, Local, Saved, and Recent filters. Select **Launch Tool** to open it or **Learn** for its in-app lesson.
 
+### Copy and paste into PowerShell
+
+After installing [Python](https://www.python.org/downloads/) and [Git](https://git-scm.com/download/win), open PowerShell and paste this entire block:
+
+```powershell
+git clone https://github.com/cros20471/cros-intelligence-console.git
+cd cros-intelligence-console
+python -m pip install -r requirements.txt
+.\start_osint_tool.bat
+```
+
+If `python` is not recognized, try `py -3 -m pip install -r requirements.txt` instead. If `git` is not recognized, close and reopen PowerShell after installing Git.
+
 `start_terminal_tool.bat` opens the original terminal menus. `install_desktop_launcher.bat` creates a Windows desktop shortcut for the web console.
 
 New here? Follow the small [Quick Start Tutorial](QUICKSTART.md) to install Cros, add a pin, and safely run your first tool.
@@ -39,3 +52,4 @@ Before publishing your own changes, run `git status` and use the built-in **Secr
 ## License
 
 MIT. See `LICENSE`.
+
