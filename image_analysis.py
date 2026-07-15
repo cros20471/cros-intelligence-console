@@ -130,6 +130,26 @@ def analyze_image_file(path_value: str | Path, *, include_thumbnail: bool = Fals
         edge_strength = round(float(ImageStat.Stat(grayscale.filter(ImageFilter.FIND_EDGES)).mean[0]), 1)
         average_hash = _average_hash(grayscale)
 
+        face_boxes: list[dict[str, float]] = []
+        face_engine = "unavailable"
+        try:
+            import cv2
+            import numpy as np
+            detector = cv2.CascadeClassifier(str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"))
+            detection = cv2.cvtColor(np.asarray(sample), cv2.COLOR_RGB2GRAY)
+            found = detector.detectMultiScale(detection, scaleFactor=1.1, minNeighbors=5, minSize=(28, 28))
+            sample_width, sample_height = sample.size
+            for x, y, box_width, box_height in found[:40]:
+                face_boxes.append({
+                    "x": round(float(x) / sample_width, 5),
+                    "y": round(float(y) / sample_height, 5),
+                    "width": round(float(box_width) / sample_width, 5),
+                    "height": round(float(box_height) / sample_height, 5),
+                })
+            face_engine = "local-opencv"
+        except (ImportError, AttributeError, OSError, ValueError):
+            face_boxes = []
+
         thumbnail = ""
         if include_thumbnail:
             preview = working.copy()
@@ -181,5 +201,8 @@ def analyze_image_file(path_value: str | Path, *, include_thumbnail: bool = Fals
         "generator_note": generator_note,
         "ai_note": "No local detector can reliably prove that an image is AI-generated. Use metadata, source history, reverse search, and visual inconsistencies together.",
         "face_note": "Face detection only counts possible face regions. It does not identify a person or search private biometric databases.",
+        "face_count": len(face_boxes),
+        "face_boxes": face_boxes,
+        "face_engine": face_engine,
         "thumbnail": thumbnail,
     }
