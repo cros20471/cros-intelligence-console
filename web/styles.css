@@ -681,7 +681,7 @@ body.no-wings .wing-deck { display: none; }
   .tool-grid, body.compact .tool-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .source-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .pin-form { grid-template-columns:1fr 1.2fr; }.pin-note-field { grid-column:1/2; }.pin-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .pinned-tool-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }.map-controls { grid-template-columns:1fr; }
+  .pinned-tool-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }.map-controls { grid-template-columns:1fr; }.map-controls form { grid-template-columns:minmax(0,1.35fr) minmax(150px,.65fr); }.map-controls #node-form label:nth-child(3),.map-controls #node-form button,.map-controls #edge-form label:nth-child(3),.map-controls #edge-form button { grid-column:1/-1; }
   .workbench-grid { grid-template-columns:1fr; }.image-results { grid-template-columns:minmax(220px,.7fr) 1.3fr; }.location-lab form { grid-template-columns:minmax(180px,.55fr) minmax(0,1.45fr); }.location-lab form .primary-button { grid-column:1/-1; }
 }
 
