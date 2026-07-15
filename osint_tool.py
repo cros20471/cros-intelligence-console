@@ -632,12 +632,9 @@ def password_helper() -> None:
 
 
 def breach_hunter() -> None:
-    email = Prompt.ask("Email to check").strip()
-    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-        console.print("[red]Enter a valid email address.[/]"); pause(); return
-    console.print("[cyan]Opening Have I Been Pwned in your browser.[/]")
-    console.print("[dim]The address is entered on their site; this tool does not collect or save it.[/]")
-    webbrowser.open("https://haveibeenpwned.com/account/" + quote_plus(email))
+    console.print("[cyan]Opening Have I Been Pwned breach notifications.[/]")
+    console.print("[dim]Enter your email on the official site and verify it there. Cros does not collect or save it.[/]")
+    webbrowser.open("https://haveibeenpwned.com/NotifyMe")
     pause()
 
 
