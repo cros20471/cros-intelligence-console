@@ -475,6 +475,15 @@
     toast("Google Lens opened", "Your selected image was handed to Google Lens in a new tab.");
   }
 
+  async function profileKey(passphrase, salt) { const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]); return crypto.subtle.deriveKey({ name:"PBKDF2", salt, iterations:150000, hash:"SHA-256" }, material, { name:"AES-GCM", length:256 }, false, ["encrypt","decrypt"]); }
+  async function exportProfile() {
+    const pass = $("#profile-passphrase").value; if (pass.length < 8) { toast("Passphrase too short", "Use at least 8 characters.", true); return; }
+    const workspace = await api("/api/workspace"); const local = Object.fromEntries(Object.keys(localStorage).filter(k => k.startsWith("cros-")).map(k => [k, localStorage.getItem(k)]));
+    const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), key = await profileKey(pass, salt); const data = new TextEncoder().encode(JSON.stringify({ version:1, workspace, local })); const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name:"AES-GCM", iv }, key, data));
+    const payload = { version:1, salt:Array.from(salt), iv:Array.from(iv), data:Array.from(encrypted) }; const blob = new Blob([JSON.stringify(payload)], { type:"application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "cros-encrypted-profile.json"; link.click(); URL.revokeObjectURL(link.href); toast("Profile exported", "Keep the backup and passphrase separate.");
+  }
+  async function importProfile(event) { const file = event.target.files[0], pass = $("#profile-passphrase").value; if (!file || pass.length < 8) { toast("Backup needs a passphrase", "Choose a backup and enter its passphrase.", true); return; } try { const payload = JSON.parse(await file.text()), key = await profileKey(pass, new Uint8Array(payload.salt)), plain = await crypto.subtle.decrypt({ name:"AES-GCM", iv:new Uint8Array(payload.iv) }, key, new Uint8Array(payload.data)), value = JSON.parse(new TextDecoder().decode(plain)); await api("/api/workspace", { method:"POST", body:JSON.stringify(value.workspace || {}) }); Object.entries(value.local || {}).forEach(([k,v]) => localStorage.setItem(k, v)); toast("Profile imported", "Restart Cros to apply the restored profile."); } catch (_) { toast("Import failed", "The passphrase or backup file is invalid.", true); } event.target.value = ""; }
+
   function researchButton(item) {
     const button = document.createElement("button");
     button.type = "button";
@@ -1794,6 +1803,7 @@
     });
     $("#hibp-api-key").value = localStorage.getItem("cros-hibp-api-key") || "";
     $("#hibp-api-key").addEventListener("change", event => localStorage.setItem("cros-hibp-api-key", event.target.value.trim()));
+    $("#profile-export").addEventListener("click", exportProfile); $("#profile-import-file").addEventListener("change", importProfile);
     $("#wing-core").addEventListener("click", () => toggleWingDeck());
     $("#wing-tools").addEventListener("click", () => {
       toggleWingDeck(false);

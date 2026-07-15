@@ -753,6 +753,7 @@ body.no-wings .wing-deck { display: none; }
 .hibp-guide-field input { height:44px; box-sizing:border-box; width:100%; border:1px solid var(--line); border-radius:9px; padding:0 12px; background:#080910; color:#f2eff8; font:500 12px var(--mono); }
 .hibp-save { width:100%; margin-top:14px; }
 .hibp-privacy { display:block; margin-top:12px; color:#777486; text-align:center; font-size:10px; }
+.profile-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }.profile-actions button,.profile-import { display:grid; place-items:center; min-height:36px; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.03); color:var(--accent-soft); font:700 8px/1 var(--mono); cursor:pointer; }.profile-import input { display:none; }
 .workspace-dock { overflow:hidden; }
 .workspace-dock-content { overflow-x:hidden; overflow-y:auto; }
 .brand { cursor:pointer; outline:none; }
