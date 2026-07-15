@@ -14,16 +14,46 @@
 
 The console opens as a local web app. It listens only on `127.0.0.1`, so other computers cannot connect to it.
 
-## 2. Add your first pin
+### One-block PowerShell setup
 
-1. Open **Pinboard**.
-2. Enter a label, an optional web link or local file/folder path, and a short note.
-3. Select **Add Pin**.
-4. Use **Top** to prioritize it, **Open** to launch it, **Copy** to copy its target, or **Remove** to delete it.
+If Python and Git are already installed, paste this whole block into PowerShell:
 
-Pins stay in the local browser profile. They are not written into this repository or sent to GitHub.
+```powershell
+git clone https://github.com/cros20471/cros-intelligence-console.git
+cd cros-intelligence-console
+python -m pip install -r requirements.txt
+.\start_osint_tool.bat
+```
 
-## 3. Run a tool safely
+If `python` is not recognized, replace the third line with `py -3 -m pip install -r requirements.txt`. If `git` is not recognized, close and reopen PowerShell after installing Git.
+
+## 2. Pin a tool and add a note
+
+1. Open **Tool Index**, choose a useful tool, and select **Pin**. It now appears at the top of **Investigation Workspace** for quick access.
+2. In **Durable Notes**, enter a label, an optional web link or local file/folder path, and a short note.
+3. Select **Add Pin**. Use **Top** to prioritize the note, **Open** to launch its target, **Copy** to copy it, or **Remove** to delete it.
+
+Pinned tools and notes stay in the local `workspace_state.json` file. They persist after the app closes and are not written into this repository or sent to GitHub.
+
+## 3. Build an investigation map
+
+1. Open **Map** and add your first entity, such as a person, account, domain, location, or piece of evidence.
+2. Add related entities.
+3. Choose a **From** node and a **To** node, describe their relationship, and select **Connect**.
+4. Drag nodes to organize the map. Select a node to inspect its context or remove it.
+
+The map is saved locally with your workspace and excluded from Git.
+
+## 4. Search a name or inspect an image in the app
+
+1. Open **Investigate**.
+2. Enter a public name or username to prepare profile candidates and focused public-web searches.
+3. For an image, choose **Complete**, **Face-region**, or **Location & metadata** scan, select a file, and choose **Analyze**.
+4. Review the local findings. Reverse-image buttons open third-party services, but Cros never uploads your selected file automatically.
+
+Face-region mode only detects possible face-shaped regions. It does not identify people. Location mode reports embedded GPS when present and does not guess where a person lives.
+
+## 5. Run a tool safely
 
 1. Open **Tool Index** and search for a workflow.
 2. Select **Learn** before using an unfamiliar tool.
@@ -32,7 +62,7 @@ Pins stay in the local browser profile. They are not written into this repositor
 
 Only scan systems and accounts you own or have explicit permission to test.
 
-## 4. Keep personal data private
+## 6. Keep personal data private
 
 - Do not commit `.env` files, reports, case notes, exports, keys, or local settings.
 - Review `git status` before every push.
