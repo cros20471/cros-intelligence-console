@@ -41,6 +41,8 @@ LEARNING_PROGRESS_FILE = APP_DIR / "learning_progress.json"
 LEARNING_PROGRESS_LOCK = threading.Lock()
 WORKSPACE_STATE_FILE = APP_DIR / "workspace_state.json"
 WORKSPACE_STATE_LOCK = threading.Lock()
+APPEARANCE_STATE_FILE = APP_DIR / "appearance_state.json"
+APPEARANCE_STATE_LOCK = threading.Lock()
 APP_ICON_FILE = WEB_DIR / "cros.ico"
 APP_LOGO_FILE = WEB_DIR / "cros-logo.png"
 APP_ICON_HANDLES: list[int] = []
@@ -231,9 +233,68 @@ def write_workspace_state(value: object) -> dict:
     return cleaned
 
 
+APPEARANCE_KEYS = {
+    "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles",
+    "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density",
+    "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose",
+}
+HEX_APPEARANCE_KEYS = {"cros-custom-accent", "cros-background", "cros-star-color"}
+
+
+def clean_appearance_state(value: object) -> dict[str, str]:
+    source = value if isinstance(value, dict) else {}
+    result: dict[str, str] = {}
+    for key in APPEARANCE_KEYS:
+        raw = source.get(key)
+        if raw is None:
+            continue
+        text = _short_text(raw, 32)
+        if key in HEX_APPEARANCE_KEYS and not re.fullmatch(r"#[0-9a-fA-F]{6}", text):
+            continue
+        if key == "cros-accent" and text not in {"violet", "cyan", "red", "green", "amber", "ice", "custom"}:
+            continue
+        if key in {"cros-shape"} and text not in {"soft", "sharp", "round"}:
+            continue
+        if key == "cros-columns" and text not in {"auto", "3", "4", "5"}:
+            continue
+        if key == "cros-rail-autoclose" and text not in {"0", "3000", "5000", "10000"}:
+            continue
+        if key in {"cros-particles", "cros-wings", "cros-compact"} and text not in {"true", "false"}:
+            continue
+        if key in {"cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness"}:
+            try:
+                number = int(text)
+            except ValueError:
+                continue
+            bounds = {"cros-glow": (0, 100), "cros-motion": (35, 180), "cros-particle-density": (20, 180), "cros-light-smoothing": (20, 100), "cros-star-brightness": (30, 240)}[key]
+            if not bounds[0] <= number <= bounds[1]:
+                continue
+            text = str(number)
+        result[key] = text
+    return result
+
+
+def read_appearance_state() -> dict[str, str]:
+    with APPEARANCE_STATE_LOCK:
+        try:
+            value = json.loads(APPEARANCE_STATE_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            value = {}
+    return clean_appearance_state(value)
+
+
+def write_appearance_state(value: object) -> dict[str, str]:
+    cleaned = clean_appearance_state(value)
+    temporary = APPEARANCE_STATE_FILE.with_suffix(".tmp")
+    with APPEARANCE_STATE_LOCK:
+        temporary.write_text(json.dumps(cleaned, indent=2), encoding="utf-8")
+        os.replace(temporary, APPEARANCE_STATE_FILE)
+    return cleaned
+
+
 def clear_local_data() -> None:
     """Remove only Cros-generated local state; never touch user files."""
-    for path in (WORKSPACE_STATE_FILE, LEARNING_PROGRESS_FILE, APP_DIR / "settings.json"):
+    for path in (WORKSPACE_STATE_FILE, APPEARANCE_STATE_FILE, LEARNING_PROGRESS_FILE, APP_DIR / "settings.json"):
         try:
             path.unlink(missing_ok=True)
         except OSError:
@@ -804,6 +865,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             self.json_response(read_workspace_state())
             return
+        if route == "/api/appearance":
+            if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
+            self.json_response(read_appearance_state())
+            return
         if route == "/api/session":
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
@@ -910,6 +975,12 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/workspace":
             try:
                 self.json_response(write_workspace_state(body))
+            except OSError as exc:
+                self.json_response({"error": str(exc)}, 500)
+            return
+        if route == "/api/appearance":
+            try:
+                self.json_response(write_appearance_state(body))
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 500)
             return

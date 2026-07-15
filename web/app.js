@@ -71,6 +71,12 @@
     return payload;
   }
 
+  const APPEARANCE_KEYS = ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose"];
+  let appearanceSaveTimer = 0;
+  function appearanceSnapshot() { return Object.fromEntries(APPEARANCE_KEYS.filter(key => localStorage.getItem(key) !== null).map(key => [key, localStorage.getItem(key)])); }
+  function queueAppearanceSave() { clearTimeout(appearanceSaveTimer); appearanceSaveTimer = setTimeout(() => { api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }, 180); }
+  async function restoreAppearanceFromServer() { try { const saved = await api("/api/appearance"); Object.entries(saved || {}).forEach(([key, value]) => { if (APPEARANCE_KEYS.includes(key)) localStorage.setItem(key, String(value)); }); } catch (_) {} }
+
   function toast(title, message, error = false) {
     const item = document.createElement("div");
     item.className = `toast${error ? " error" : ""}`;
@@ -1848,6 +1854,9 @@
       renderTools();
       toast("Appearance reset", "The original CROS interface settings are restored.");
     });
+    $$(`#settings-drawer input, #settings-drawer select, #settings-drawer .toggle, #settings-drawer [data-accent], #settings-drawer [data-shape], #settings-drawer [data-columns]`).forEach(control => {
+      ["input", "change", "click"].forEach(type => control.addEventListener(type, () => setTimeout(queueAppearanceSave, 0)));
+    });
     let clearArmed = false, clearTimer = 0;
     $("#clear-local-data").addEventListener("click", async () => {
       if (!clearArmed) { clearArmed = true; $("#clear-local-data").textContent = "CLICK AGAIN TO CLEAR"; clearTimer = setTimeout(() => { clearArmed = false; $("#clear-local-data").textContent = "CLEAR LOCAL CROS DATA"; }, 5000); return; }
@@ -1901,6 +1910,7 @@
 
   async function init() {
     setupWorkspaceDock();
+    await restoreAppearanceFromServer();
     restoreSettings();
     renderPins();
     renderPinnedTools();
