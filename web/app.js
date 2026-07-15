@@ -47,6 +47,7 @@
     selectedNode: "",
     imageResult: null,
     workspaceView: "research",
+    workspaceHomeView: "research",
     identityToolId: "1",
     sessionId: "",
     sessionOffset: 0,
@@ -475,7 +476,7 @@
     if (state.workspaceView === "map") renderGraph();
   }
 
-  function openWorkspace(view = state.workspaceView) {
+  function openWorkspace(view = state.workspaceHomeView) {
     const dock = $("#workspace-dock");
     dock.hidden = false;
     dock.setAttribute("aria-hidden", "false");
@@ -487,31 +488,61 @@
     const dock = $("#workspace-dock");
     dock.hidden = true;
     dock.setAttribute("aria-hidden", "true");
+    $("#workspace-settings").hidden = true;
+    $("#workspace-customize").setAttribute("aria-expanded", "false");
     $("#workspace-restore").hidden = false;
+  }
+
+  function setWorkspaceWidth(value, persist = true) {
+    const width = Math.max(300, Math.min(Math.min(900, innerWidth - 20), Number(value) || 570));
+    document.documentElement.style.setProperty("--workspace-width", `${width}px`);
+    $("#workspace-width-control").value = String(Math.round(width));
+    $("#workspace-width-value").textContent = `${Math.round(width)}px`;
+    if (persist) localStorage.setItem("cros-workspace-width", String(Math.round(width)));
+  }
+
+  function setWorkspaceTabSize(size, persist = true) {
+    const value = ["compact", "normal", "large"].includes(size) ? size : "normal";
+    $("#workspace-dock").dataset.tabSize = value;
+    $$('[data-workspace-tab-size]').forEach(button => {
+      const active = button.dataset.workspaceTabSize === value;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    if (persist) localStorage.setItem("cros-workspace-tab-size", value);
+  }
+
+  function setWorkspaceHomeView(view, persist = true) {
+    state.workspaceHomeView = ["research", "map", "session"].includes(view) ? view : "research";
+    $("#workspace-home-view").value = state.workspaceHomeView;
+    if (persist) localStorage.setItem("cros-workspace-home-view", state.workspaceHomeView);
+  }
+
+  function toggleWorkspaceSettings() {
+    const panel = $("#workspace-settings");
+    panel.hidden = !panel.hidden;
+    $("#workspace-customize").setAttribute("aria-expanded", String(!panel.hidden));
   }
 
   function setupWorkspaceDock() {
     const content = $("#workspace-dock-content");
     content.prepend($("#investigation-workbench"), $("#investigation-map"));
-    const savedWidth = Math.max(340, Math.min(900, Number(localStorage.getItem("cros-workspace-width")) || 570));
-    document.documentElement.style.setProperty("--workspace-width", `${savedWidth}px`);
-    setWorkspaceView("research");
+    setWorkspaceWidth(localStorage.getItem("cros-workspace-width") || 570, false);
+    setWorkspaceTabSize(localStorage.getItem("cros-workspace-tab-size") || "normal", false);
+    setWorkspaceHomeView(localStorage.getItem("cros-workspace-home-view") || "research", false);
+    setWorkspaceView(state.workspaceHomeView);
   }
 
   let workspaceResizing = false;
   function handleWorkspaceResize(event) {
     if (!workspaceResizing || innerWidth <= 880) return;
-    const width = Math.max(340, Math.min(Math.min(900, innerWidth - 20), innerWidth - event.clientX));
-    document.documentElement.style.setProperty("--workspace-width", `${width}px`);
-    localStorage.setItem("cros-workspace-width", String(Math.round(width)));
+    setWorkspaceWidth(innerWidth - event.clientX);
   }
 
   function resizeWorkspaceBy(delta) {
     if (innerWidth <= 880) return;
     const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--workspace-width")) || 570;
-    const width = Math.max(340, Math.min(Math.min(900, innerWidth - 20), current + delta));
-    document.documentElement.style.setProperty("--workspace-width", `${width}px`);
-    localStorage.setItem("cros-workspace-width", String(Math.round(width)));
+    setWorkspaceWidth(current + delta);
   }
 
   function toggleWorkspaceSize() {
@@ -1484,7 +1515,11 @@
     $$('[data-workspace-tab]').forEach(button => button.addEventListener("click", () => setWorkspaceView(button.dataset.workspaceTab)));
     $("#workspace-close").addEventListener("click", closeWorkspace);
     $("#workspace-restore").addEventListener("click", () => openWorkspace());
+    $("#workspace-customize").addEventListener("click", toggleWorkspaceSettings);
     $("#workspace-size").addEventListener("click", toggleWorkspaceSize);
+    $("#workspace-width-control").addEventListener("input", event => setWorkspaceWidth(event.target.value));
+    $$('[data-workspace-tab-size]').forEach(button => button.addEventListener("click", () => setWorkspaceTabSize(button.dataset.workspaceTabSize)));
+    $("#workspace-home-view").addEventListener("change", event => setWorkspaceHomeView(event.target.value));
     $("#workspace-resize-handle").addEventListener("pointerdown", event => { event.preventDefault(); workspaceResizing = true; });
     $("#workspace-resize-handle").addEventListener("keydown", event => {
       if (event.key === "ArrowLeft") { event.preventDefault(); resizeWorkspaceBy(24); }

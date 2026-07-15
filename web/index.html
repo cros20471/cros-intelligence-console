@@ -288,8 +288,13 @@
     <button class="workspace-resize-handle" id="workspace-resize-handle" aria-label="Resize investigation workspace" aria-description="Drag horizontally or use the left and right arrow keys"></button>
     <header class="workspace-dock-head">
       <div><span>IN-APP WORKSPACE</span><h2>Investigate</h2></div>
-      <div class="workspace-dock-actions"><button id="workspace-size" aria-label="Maximize workspace">□</button><button id="workspace-close" aria-label="Close workspace">×</button></div>
+      <div class="workspace-dock-actions"><button id="workspace-customize" aria-expanded="false" aria-controls="workspace-settings">TUNE</button><button id="workspace-size" aria-label="Maximize workspace">□</button><button id="workspace-close" aria-label="Close workspace">×</button></div>
     </header>
+    <section class="workspace-settings" id="workspace-settings" hidden aria-label="Customize workspace tabs">
+      <label><span>PANEL WIDTH</span><input id="workspace-width-control" type="range" min="300" max="900" step="10" value="570"><b id="workspace-width-value">570px</b></label>
+      <div class="workspace-setting-row"><span>TAB SIZE</span><div id="workspace-tab-sizes"><button type="button" data-workspace-tab-size="compact">SMALL</button><button type="button" data-workspace-tab-size="normal">NORMAL</button><button type="button" data-workspace-tab-size="large">LARGE</button></div></div>
+      <label><span>OPEN TO</span><select id="workspace-home-view"><option value="research">Research</option><option value="map">Map</option><option value="session">Tool session</option></select></label>
+    </section>
     <nav class="workspace-tabs" aria-label="Workspace views">
       <button class="active" data-workspace-tab="research">RESEARCH</button>
       <button data-workspace-tab="map">MAP</button>
