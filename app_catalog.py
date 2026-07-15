@@ -24,7 +24,7 @@ CATALOG += _rows("osint", "Identity Intelligence", [
     ("1", "Username Search", "Check one username across public account sources.", "network"),
     ("2", "Username Combinations", "Build and check structured username variations.", "network"),
     ("3", "Email Search", "Research public references tied to an email address.", "network"),
-    ("4", "Breach Research", "Open defensive breach-search resources and investigation paths.", "browser"),
+    ("4", "Breach Notifications", "Check an email with the official Have I Been Pwned notification service.", "browser"),
     ("6", "Website History", "Review archived versions of a public website.", "browser"),
     ("7", "Search Builder", "Create focused public-search queries for an investigation.", "browser"),
     ("8", "Paste Research", "Search public paste references without collecting private data.", "network"),
