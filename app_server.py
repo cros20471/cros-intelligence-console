@@ -445,22 +445,6 @@ def apply_cros_window_icon(icon_path: Path) -> None:
         return
 
 
-def launch_tool(category: str, tool_id: str) -> None:
-    if category == "terminal" and tool_id == "main":
-        allowed = True
-    else:
-        allowed = f"{category}:{tool_id}" in TOOL_KEYS
-    if not allowed: raise ValueError("Tool is not in the local allowlist")
-    flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
-    env = os.environ.copy()
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
-    subprocess.Popen(
-        [console_python(), str(APP_DIR / "tool_runner.py"), category, tool_id],
-        cwd=str(APP_DIR), env=env, creationflags=flags, close_fds=True,
-    )
-
-
 def _clean_session_text(value: str) -> str:
     value = ANSI_ESCAPE.sub("", value).replace("\x00", "")
     return "".join(char for char in value if char in "\n\r\t" or ord(char) >= 32)
@@ -821,15 +805,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response({"ok": True})
             except ValueError as exc: self.json_response({"error": str(exc)}, 400)
             except OSError as exc: self.json_response({"error": str(exc)}, 500)
-            return
-        if route == "/api/launch":
-            category = str(body.get("category", "")).lower().strip()
-            tool_id = str(body.get("id", "")).strip()
-            try:
-                launch_tool(category, tool_id)
-                self.json_response({"ok": True, "launched": f"{category}:{tool_id}"})
-            except (OSError, ValueError) as exc:
-                self.json_response({"error": str(exc)}, 400)
             return
         if route == "/api/open":
             allowed = {"folder": APP_DIR}
