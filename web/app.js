@@ -1793,12 +1793,14 @@
       renderTools();
       toast("Appearance reset", "The original CROS interface settings are restored.");
     });
+    let clearArmed = false, clearTimer = 0;
     $("#clear-local-data").addEventListener("click", async () => {
-      if (!confirm("Clear Cros saved pins, notes, map data, lessons, and preferences?")) return;
+      if (!clearArmed) { clearArmed = true; $("#clear-local-data").textContent = "CLICK AGAIN TO CLEAR"; clearTimer = setTimeout(() => { clearArmed = false; $("#clear-local-data").textContent = "CLEAR LOCAL CROS DATA"; }, 5000); return; }
+      clearArmed = false; clearTimeout(clearTimer); $("#clear-local-data").textContent = "CLEARING…";
       try {
         await api("/api/clear-local-data", { method: "POST", body: "{}" });
         Object.keys(localStorage).filter(key => key.startsWith("cros-")).forEach(key => localStorage.removeItem(key));
-        toast("Local data cleared", "Cros saved state and preferences were removed.");
+        $("#clear-local-data").textContent = "CLEAR LOCAL CROS DATA"; toast("Local data cleared", "Cros saved state and preferences were removed.");
       } catch (error) { toast("Could not clear local data", error.message, true); }
     });
     $("#hibp-api-key").value = localStorage.getItem("cros-hibp-api-key") || "";
