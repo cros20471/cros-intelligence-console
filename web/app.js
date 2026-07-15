@@ -1566,6 +1566,8 @@
     localStorage.setItem("cros-custom-accent", hex);
   }
   function setCustomBackground(hex, save = true) { document.documentElement.style.setProperty("--custom-bg", hex); if (save) localStorage.setItem("cros-background", hex); }
+  function setStarColor(hex, save = true) { const rgb = hexToRgb(hex); if (!rgb) return; document.documentElement.style.setProperty("--star-rgb", rgb.join(", ")); $("#custom-stars").value = hex; if (save) localStorage.setItem("cros-star-color", hex); }
+  function setSettingsOpen(open) { const drawer = $("#settings-drawer"); drawer.classList.toggle("open", open); drawer.setAttribute("aria-hidden", String(!open)); }
 
   function toggleSetting(id, bodyClass, storageKey, invert = false) {
     const button = $(id);
@@ -1703,7 +1705,9 @@
         return;
       }
       context.clearRect(0, 0, width, height);
-      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent-rgb").trim() || "133,102,255";
+        const styles = getComputedStyle(document.documentElement);
+        const accent = styles.getPropertyValue("--accent-rgb").trim() || "133,102,255";
+        const starColor = styles.getPropertyValue("--star-rgb").trim() || accent;
       particles.forEach((particle, index) => {
         particle.x += particle.vx * delta; particle.y += particle.vy * delta;
         if (particle.x < -10) particle.x = width + 10; if (particle.x > width + 10) particle.x = -10;
@@ -1715,10 +1719,10 @@
         const smoothness = Number(rootStyle.getPropertyValue("--light-smoothing")) || .75;
         const brightness = Number(rootStyle.getPropertyValue("--star-brightness")) || 1.2;
         const shimmer = .82 + Math.sin(now * .0012 + index) * .18 * smoothness;
-        context.fillStyle = `rgba(${accent},${Math.min(1, ((particle.a * shimmer) + boost * .35) * brightness)})`; context.fill();
+        context.fillStyle = `rgba(${starColor},${Math.min(1, ((particle.a * shimmer) + boost * .35) * brightness)})`; context.fill();
         if (index % 7 === 0 && boost > .25) {
           context.beginPath(); context.moveTo(particle.x, particle.y); context.lineTo(pointer.x, pointer.y);
-          context.strokeStyle = `rgba(${accent},${boost * .08})`; context.stroke();
+          context.strokeStyle = `rgba(${starColor},${boost * .08})`; context.stroke();
         }
       });
       requestAnimationFrame(frame);
@@ -1814,20 +1818,19 @@
     addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); openCommand(); }
       if (event.key.toLowerCase() === "c" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) { event.preventDefault(); openWorkspace(); $("[data-workspace-tab].active")?.focus(); }
-      if (event.key === "Escape") { closeCommand(); $("#detail-layer").hidden = true; $("#settings-drawer").classList.remove("open"); closeWorkspace(); }
+      if (event.key === "Escape") { closeCommand(); $("#detail-layer").hidden = true; setSettingsOpen(false); closeWorkspace(); }
     });
-    $("#settings-button").addEventListener("click", () => {
-      const drawer = $("#settings-drawer");
-      drawer.classList.toggle("open");
-      drawer.setAttribute("aria-hidden", String(!drawer.classList.contains("open")));
-    });
-    $("#search-settings").addEventListener("click", () => $("#settings-drawer").classList.add("open"));
-    $("#settings-close").addEventListener("click", () => $("#settings-drawer").classList.remove("open"));
+    $("#settings-button").addEventListener("click", () => setSettingsOpen(!$("#settings-drawer").classList.contains("open")));
+    $("#search-settings").addEventListener("click", () => setSettingsOpen(true));
+    $("#settings-close").addEventListener("click", () => setSettingsOpen(false));
     $$('[data-accent]').forEach(button => button.addEventListener("click", () => setAccent(button.dataset.accent)));
     $("#custom-accent").addEventListener("input", event => setCustomAccent(event.target.value));
     $("#custom-background").value = localStorage.getItem("cros-background") || "#090b14";
     setCustomBackground($("#custom-background").value, false);
     $("#custom-background").addEventListener("input", event => setCustomBackground(event.target.value));
+    $("#custom-stars").value = localStorage.getItem("cros-star-color") || "#9ca9ff";
+    setStarColor($("#custom-stars").value, false);
+    $("#custom-stars").addEventListener("input", event => setStarColor(event.target.value));
     $("#particle-toggle").addEventListener("click", () => toggleSetting("#particle-toggle", "no-particles", "cros-particles", true));
     $("#wing-toggle").addEventListener("click", () => toggleSetting("#wing-toggle", "no-wings", "cros-wings", true));
     $("#compact-toggle").addEventListener("click", () => { toggleSetting("#compact-toggle", "compact", "cros-compact"); renderTools(); });
@@ -1839,7 +1842,7 @@
     $$('[data-shape]').forEach(button => button.addEventListener("click", () => setShape(button.dataset.shape)));
     $$('[data-columns]').forEach(button => button.addEventListener("click", () => setColumns(button.dataset.columns)));
     $("#reset-appearance").addEventListener("click", () => {
-      ["cros-accent", "cros-custom-accent", "cros-particles", "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns"].forEach(key => localStorage.removeItem(key));
+      ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns"].forEach(key => localStorage.removeItem(key));
       document.body.classList.remove("no-particles", "no-wings", "compact", "fixed-columns");
       restoreSettings();
       renderTools();
