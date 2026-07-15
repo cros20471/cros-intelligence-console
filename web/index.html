@@ -180,6 +180,11 @@
           <div class="lab-loading" id="image-scan-loading" hidden>ANALYZING LOCALLY…</div>
           <div class="image-results" id="image-results" aria-live="polite"><div class="lab-empty"><strong>No image selected</strong><span>The file is analyzed locally and deleted from temporary storage immediately.</span></div></div>
         </article>
+        <article class="workbench-panel location-lab">
+          <div class="lab-head"><span>03 / LOCATION RESEARCH</span><h3>Place clue assistant</h3><p>Rank public-place hypotheses from clues you provide. Results are estimates, not exact address identification.</p></div>
+          <form id="location-form" autocomplete="off"><label><span>REGION / COUNTRY</span><input id="location-region" placeholder="Optional region"></label><label><span>VISIBLE CLUES</span><textarea id="location-clues" maxlength="1600" placeholder="Signs, language, road markings, buildings, terrain, landmarks…"></textarea></label><button class="primary-button" type="submit">BUILD HYPOTHESES <span>→</span></button></form>
+          <div class="location-results" id="location-results"><div class="lab-empty"><strong>No clues yet</strong><span>Add public-place clues to create a verification checklist.</span></div></div>
+        </article>
       </div>
     </section>
 

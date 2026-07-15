@@ -938,6 +938,8 @@
     $$(".neural-node", $("#neural-map")).forEach(item => item.classList.toggle("selected", item.dataset.nodeId === id));
   }
 
+  function buildLocationHypotheses(event) { event.preventDefault(); const region = $("#location-region").value.trim(), clues = $("#location-clues").value.trim(); if (!clues) return; const root = $("#location-results"); root.replaceChildren(); const title = document.createElement("strong"); title.textContent = "RESEARCH LEADS"; const note = document.createElement("p"); note.textContent = "Use these clues as hypotheses. Verify with maps, official venue pages, street-level context, and multiple independent sources."; const list = document.createElement("ul"); const items = [region ? `Start with public places in ${region} matching the visible clues.` : "Identify the broad region from language, road markings, architecture, and terrain.", "Search distinctive sign text in quotes and compare official pages or map listings.", "Cross-check candidate landmarks against building shape, road layout, weather, and image date."]; items.forEach(text => { const li = document.createElement("li"); li.textContent = text; list.append(li); }); root.append(title, note, list); }
+
   function editSelectedNode() {
     const node = state.graph.nodes.find(item => item.id === state.selectedNode);
     if (!node) return;
@@ -1704,6 +1706,7 @@
     $("#image-scan-form").addEventListener("submit", scanImage);
     $("#image-file").addEventListener("change", event => { $("#image-file-label").textContent = event.target.files[0]?.name || "Choose image"; });
     $("#image-scan-mode").addEventListener("change", renderImageResult);
+    $("#location-form").addEventListener("submit", buildLocationHypotheses);
     $("#session-input-form").addEventListener("submit", sendSessionInput);
     $("#session-stop").addEventListener("click", () => stopActiveSession(true));
     $("#session-view-map").addEventListener("click", () => openWorkspace("map"));
