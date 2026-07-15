@@ -920,6 +920,25 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 500)
             return
+        if route == "/api/hibp-check":
+            email = str(body.get("email", "")).strip()
+            api_key = str(body.get("api_key", "")).strip()
+            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+                self.json_response({"error": "Enter a valid email address."}, 400); return
+            if not re.fullmatch(r"[0-9a-fA-F]{32}", api_key):
+                self.json_response({"error": "HIBP API keys must be 32 hexadecimal characters."}, 400); return
+            request = urllib.request.Request("https://haveibeenpwned.com/api/v3/breachedaccount/" + urllib.parse.quote(email), headers={"hibp-api-key": api_key, "user-agent": "Cros-Intelligence-Console"})
+            try:
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    payload = json.loads(response.read().decode("utf-8")) if response.status != 404 else []
+                self.json_response({"found": True, "breaches": payload if isinstance(payload, list) else []})
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404: self.json_response({"found": False, "breaches": []})
+                elif exc.code in {401, 403}: self.json_response({"error": "HIBP rejected the API key or request."}, 400)
+                else: self.json_response({"error": f"HIBP returned HTTP {exc.code}."}, 502)
+            except (OSError, json.JSONDecodeError) as exc:
+                self.json_response({"error": f"Could not reach HIBP: {exc}"}, 502)
+            return
         if route == "/api/open-pinned":
             try:
                 open_pinned_target(body.get("target"))
