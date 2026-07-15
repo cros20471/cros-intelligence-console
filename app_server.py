@@ -267,6 +267,7 @@ ALLOWED_WEB_HOSTS = {
     "google.com", "www.google.com", "lens.google.com", "bing.com", "www.bing.com", "duckduckgo.com",
     "github.com", "reddit.com", "www.reddit.com", "x.com", "instagram.com", "www.instagram.com",
     "tiktok.com", "www.tiktok.com", "youtube.com", "www.youtube.com", "yandex.com", "yandex.ru",
+    "haveibeenpwned.com", "www.haveibeenpwned.com",
 }
 
 
