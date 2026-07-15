@@ -565,7 +565,7 @@
   let railAutoCloseTimer = 0;
   function toggleNavigation() { document.body.classList.toggle("rail-collapsed"); localStorage.setItem("cros-rail-collapsed", document.body.classList.contains("rail-collapsed") ? "1" : "0"); }
   function scheduleRailClose() { clearTimeout(railAutoCloseTimer); const delay = Number(localStorage.getItem("cros-rail-autoclose") ?? 3000); if (delay > 0 && innerWidth >= 1100) railAutoCloseTimer = setTimeout(() => { document.body.classList.add("rail-collapsed"); localStorage.setItem("cros-rail-collapsed", "1"); }, delay); }
-  function handleRailResize(event) { if (!railResizing || innerWidth < 1100) return; const width = Math.max(190, Math.min(420, event.clientX - 12)); document.documentElement.style.setProperty("--rail-width", `${width}px`); localStorage.setItem("cros-rail-width", String(width)); }
+  function handleRailResize(event) { if (!railResizing || innerWidth < 1100) return; const width = Math.max(240, Math.min(420, event.clientX - 12)); document.documentElement.style.setProperty("--rail-width", `${width}px`); localStorage.setItem("cros-rail-width", String(width)); }
   let workspaceDragging = false;
   let workspaceDragOffset = { x: 0, y: 0 };
   let workspaceFrame = 0;
@@ -1741,7 +1741,7 @@
     $("#command-button").addEventListener("click", () => openCommand());
     $(".brand")?.addEventListener("click", event => { event.preventDefault(); toggleNavigation(); });
     const railWidth = Number(localStorage.getItem("cros-rail-width"));
-    if (railWidth >= 190) document.documentElement.style.setProperty("--rail-width", `${Math.min(420, railWidth)}px`);
+    if (railWidth >= 240) document.documentElement.style.setProperty("--rail-width", `${Math.min(420, railWidth)}px`);
     if (localStorage.getItem("cros-rail-collapsed") === "1") document.body.classList.add("rail-collapsed");
     $("#rail-autoclose").value = localStorage.getItem("cros-rail-autoclose") ?? "3000";
     $("#rail-autoclose").addEventListener("change", event => localStorage.setItem("cros-rail-autoclose", event.target.value));
