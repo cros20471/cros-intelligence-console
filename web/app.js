@@ -697,6 +697,17 @@
     toast("Added to investigation map", `${account.platform} was connected to @${username}.`);
   }
 
+  async function copyAccountLink(account, button) {
+    if (!account?.url) return;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(account.url);
+      else { const field = document.createElement("textarea"); field.value = account.url; field.style.position = "fixed"; field.style.opacity = "0"; document.body.append(field); field.select(); document.execCommand("copy"); field.remove(); }
+      const original = button.textContent; button.textContent = "COPIED"; button.disabled = true;
+      setTimeout(() => { button.textContent = original; button.disabled = false; }, 1400);
+      toast("Account link copied", "Paste the public profile URL wherever you need it.");
+    } catch (_) { toast("Could not copy link", "Select the URL text and copy it manually.", true); }
+  }
+
   function renderSessionSocialResults() {
     const section = $("#session-socials");
     const root = $("#session-social-list");
@@ -708,12 +719,15 @@
       const name = document.createElement("strong"); name.textContent = account.platform;
       const url = document.createElement("span"); url.textContent = account.url;
       copy.append(name, url);
+      const actions = document.createElement("div"); actions.className = "session-social-actions";
+      const copyButton = document.createElement("button"); copyButton.type = "button"; copyButton.className = "secondary"; copyButton.textContent = "COPY LINK";
+      copyButton.addEventListener("click", () => copyAccountLink(account, copyButton));
       const button = document.createElement("button"); button.type = "button";
       const mapped = Boolean(mappedSocialNode(account));
       button.textContent = mapped ? "ADDED" : "ADD TO MAP";
       button.disabled = mapped;
       button.addEventListener("click", () => addSocialToMap(account));
-      row.append(copy, button); root.append(row);
+      actions.append(copyButton, button); row.append(copy, actions); root.append(row);
     });
   }
 
