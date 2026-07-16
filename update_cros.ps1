@@ -1,6 +1,15 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 if (-not (Test-Path (Join-Path $PSScriptRoot ".git"))) { throw "This folder is not a Git checkout." }
+
+# Release locked Python extensions before Git/pip replace the engine runtime.
+$crosProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+  $_.CommandLine -match '(?i)(app_server|tool_runner|blackbird\.py)'
+}
+foreach ($process in $crosProcesses) {
+  try { Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction SilentlyContinue } catch {}
+}
+Start-Sleep -Milliseconds 800
 git pull --ff-only
 
 function Find-CrosPython {
@@ -40,6 +49,30 @@ $tag = (& $pythonExe @pythonArgs -c "import sys; print(sys.implementation.cache_
 $target = Join-Path $PSScriptRoot (Join-Path "engine_deps" $tag)
 New-Item -ItemType Directory -Force $target | Out-Null
 $packages = @(Get-Content $engineRequirements | ForEach-Object { $name = ($_ -split '[<>=!~\[]')[0].Trim(); if ($name -match '^[A-Za-z0-9_.-]+$') { $name } })
+function Stop-CrosProcesses {
+  $running = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.CommandLine -match '(?i)(app_server|tool_runner|blackbird\.py)'
+  }
+  foreach ($process in $running) {
+    try { Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction SilentlyContinue } catch {}
+  }
+  Start-Sleep -Milliseconds 800
+}
+
+Stop-CrosProcesses
 & $pythonExe @pythonArgs -m pip install --disable-pip-version-check --target $target --upgrade @packages
-if ($LASTEXITCODE -ne 0) { throw "Blackbird dependencies could not be installed." }
+if ($LASTEXITCODE -ne 0) {
+  # OneDrive/Defender can briefly retain a compiled extension after shutdown.
+  # Retry from a clean, verified generated dependency directory.
+  Stop-CrosProcesses
+  $repoRoot = (Resolve-Path -LiteralPath $PSScriptRoot).Path.TrimEnd('\\')
+  $targetPath = (Resolve-Path -LiteralPath $target).Path.TrimEnd('\\')
+  if (-not $targetPath.StartsWith($repoRoot + '\\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to clean an engine dependency path outside the Cros folder."
+  }
+  Remove-Item -LiteralPath $targetPath -Recurse -Force
+  New-Item -ItemType Directory -Force $target | Out-Null
+  & $pythonExe @pythonArgs -m pip install --disable-pip-version-check --target $target @packages
+  if ($LASTEXITCODE -ne 0) { throw "Blackbird dependencies could not be installed. Close Cros and run the updater again." }
+}
 Start-Process -FilePath (Join-Path $PSScriptRoot "start_osint_tool.bat") -WorkingDirectory $PSScriptRoot
