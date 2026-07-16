@@ -10,7 +10,17 @@ foreach ($process in $crosProcesses) {
   try { Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction SilentlyContinue } catch {}
 }
 Start-Sleep -Milliseconds 800
+$beforeCommit = (& git rev-parse HEAD).Trim()
 git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git could not update Cros. Close Git operations and run the updater again." }
+$afterCommit = (& git rev-parse HEAD).Trim()
+if ($beforeCommit -ne $afterCommit -and $env:CROS_UPDATER_REEXEC -ne "1") {
+  $env:CROS_UPDATER_REEXEC = "1"
+  $child = Start-Process -FilePath "powershell.exe" -ArgumentList @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "update_cros.ps1")
+  ) -WorkingDirectory $PSScriptRoot -Wait -PassThru
+  exit $child.ExitCode
+}
 
 function Find-CrosPython {
   $candidates = @()
