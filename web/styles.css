@@ -813,7 +813,11 @@ body.no-animations *, body.no-animations *::before, body.no-animations *::after 
   body.rail-collapsed .brand-copy, body.rail-collapsed .nav-links, body.rail-collapsed .top-actions { display:none; }
   body.rail-collapsed .brand { width:42px; height:42px; margin:2px auto 0; padding:0; justify-content:center; border:1px solid rgba(var(--accent-rgb),.3); border-radius:12px; background:rgba(var(--accent-rgb),.08); }
   body.rail-collapsed .brand:focus { outline:none; }
-  body.rail-collapsed .brand-mark { width:30px; height:30px; }
+  body.rail-collapsed .brand-copy { display:none !important; }
+  body.rail-collapsed .brand-mark { width:34px; height:34px; border-radius:50%; transform:none !important; border-color:rgba(var(--accent-rgb),.55); box-shadow:0 0 16px rgba(var(--accent-rgb),.16), inset 0 0 12px rgba(var(--accent-rgb),.12); }
+  body.rail-collapsed .brand-mark::before { inset:5px; border-radius:50%; transform:none; }
+  body.rail-collapsed .brand-mark::after { inset:9px; border-radius:50%; transform:none; }
+  body.rail-collapsed .brand-mark span { transform:none; font-size:15px; letter-spacing:0; }
   body.rail-collapsed .rail-resize-handle { display:none; }
 }
 @media (max-width: 880px) {
