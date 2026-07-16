@@ -23,27 +23,39 @@ The prompt must look like `PS C:\Users\YourName>`. A `>>>` prompt is Python, not
 ```powershell
 $url = "https://github.com/cros20471/cros-intelligence-console.git"
 $git = Get-Command git -ErrorAction SilentlyContinue
-$py = Get-Command py -ErrorAction SilentlyContinue
-$python = Get-Command python -ErrorAction SilentlyContinue
-function Test-PythonCommand($command, [string[]]$arguments) { if (-not $command) { return $false }; & $command @arguments -c "import sys; print(sys.executable)" *> $null; return ($LASTEXITCODE -eq 0) }
-$pyWorks = Test-PythonCommand $py @("-3")
-$pythonWorks = Test-PythonCommand $python @()
-if ((-not $git) -or (-not ($pyWorks -or $pythonWorks))) {
+function Find-CrosPython {
+  $candidates = @()
+  $launcher = Get-Command py -ErrorAction SilentlyContinue
+  if ($launcher) { $candidates += ,@("py", @("-3")) }
+  $command = Get-Command python -ErrorAction SilentlyContinue
+  if ($command -and $command.Source -notmatch "\\WindowsApps\\") { $candidates += ,@($command.Source, @()) }
+  $roots = @((Join-Path $env:LOCALAPPDATA "Programs\Python"), (Join-Path $env:LOCALAPPDATA "Python"), $env:ProgramFiles, ${env:ProgramFiles(x86)})
+  foreach ($root in $roots) {
+    if (-not $root -or -not (Test-Path $root)) { continue }
+    Get-ChildItem -LiteralPath $root -Directory -Filter "Python*" -ErrorAction SilentlyContinue | ForEach-Object {
+      $exe = Join-Path $_.FullName "python.exe"
+      if (Test-Path $exe) { $candidates += ,@($exe, @()) }
+    }
+  }
+  foreach ($candidate in $candidates) { & $candidate[0] @($candidate[1]) -c "import sys; print(sys.executable)" *> $null; if ($LASTEXITCODE -eq 0) { return [pscustomobject]@{ Command = $candidate[0]; Args = @($candidate[1]) } } }
+  return $null
+}
+$pythonSpec = Find-CrosPython
+if ((-not $git) -or (-not $pythonSpec)) {
   if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "Git/Python are missing and winget is unavailable. Install Git from https://git-scm.com/download/win and Python from https://www.python.org/downloads/windows/, then reopen PowerShell." }
   if (-not $git) { winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements }
-  if (-not ($pyWorks -or $pythonWorks)) { winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements }
+  if (-not $pythonSpec) { winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements }
   $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
-  $git = Get-Command git -ErrorAction SilentlyContinue; $py = Get-Command py -ErrorAction SilentlyContinue; $python = Get-Command python -ErrorAction SilentlyContinue
-  $pyWorks = Test-PythonCommand $py @("-3"); $pythonWorks = Test-PythonCommand $python @()
+  $git = Get-Command git -ErrorAction SilentlyContinue; $pythonSpec = Find-CrosPython
 }
 if (-not $git) { throw "Git installation did not finish. Close and reopen PowerShell, then paste this block again." }
-if (-not ($pyWorks -or $pythonWorks)) { throw "Python installation did not finish. Close and reopen PowerShell, then paste this block again. Do not use the Microsoft Store app alias." }
+if (-not $pythonSpec) { throw "Python is installed but Cros could not find a usable executable. Install Python from python.org with Add Python to PATH enabled, then reopen PowerShell." }
 $here = (Get-Location).Path
 $documents = [Environment]::GetFolderPath("MyDocuments")
 $repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here "start_osint_tool.bat"))) { $here } else { Join-Path $documents "cros-intelligence-console" }
 if (Test-Path (Join-Path $repo ".git")) { git -C $repo pull --ff-only } elseif (-not (Test-Path (Join-Path $repo "start_osint_tool.bat"))) { git clone $url $repo }
 Set-Location $repo
-$pythonExe = if ($pyWorks) { "py" } else { "python" }; $pythonArgs = if ($pyWorks) { @("-3") } else { @() }
+$pythonExe = $pythonSpec.Command; $pythonArgs = @($pythonSpec.Args)
 & $pythonExe @pythonArgs -c "import sys; print('Python', sys.version.split()[0], 'from', sys.executable)"; if ($LASTEXITCODE -ne 0) { throw "Python could not be started. Install Python from python.org and enable the launcher/PATH option." }; & $pythonExe @pythonArgs -m pip install -r requirements.txt
 $engine = Join-Path $repo "blackbird"
 if (Test-Path (Join-Path $engine ".git")) { git -C $engine pull --ff-only } elseif (-not (Test-Path (Join-Path $engine "blackbird.py"))) { git clone "https://github.com/p1ngul1n0/blackbird.git" $engine }
