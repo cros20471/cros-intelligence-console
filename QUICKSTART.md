@@ -18,6 +18,8 @@ The console opens as a local web app. It listens only on `127.0.0.1`, so other c
 
 If Python and Git are already installed, paste this whole block into PowerShell:
 
+The prompt must look like `PS C:\Users\YourName>`. A `>>>` prompt is Python, not PowerShell; type `exit()` and open PowerShell from the Start menu before pasting.
+
 ```powershell
 $url = "https://github.com/cros20471/cros-intelligence-console.git"
 $git = Get-Command git -ErrorAction SilentlyContinue

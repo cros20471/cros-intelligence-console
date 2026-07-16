@@ -16,6 +16,8 @@ The ChatGPT-style Investigation Workspace is a collapsible, resizable panel for 
 
 After installing [Python](https://www.python.org/downloads/) and [Git](https://git-scm.com/download/win), open PowerShell and paste this entire block:
 
+Make sure the window shows a prompt like `PS C:\Users\YourName>` before pasting. If it shows `>>>`, you are inside Python; type `exit()` first, close that window, and open **PowerShell** from the Start menu.
+
 ```powershell
 $url = "https://github.com/cros20471/cros-intelligence-console.git"
 $git = Get-Command git -ErrorAction SilentlyContinue
