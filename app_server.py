@@ -841,7 +841,7 @@ def install_desktop_shortcut() -> None:
         "$shell=New-Object -ComObject WScript.Shell;"
         f"$shortcut=$shell.CreateShortcut('{ps_quote(shortcut)}');"
         "$shortcut.TargetPath='cmd.exe';"
-        f"$shortcut.Arguments='/c ""{ps_quote(launcher)}""';"
+        f"$shortcut.Arguments='/c \"\"{ps_quote(launcher)}\"\"';"
         f"$shortcut.WorkingDirectory='{ps_quote(APP_DIR)}';"
         f"$shortcut.IconLocation='{ps_quote(APP_ICON_FILE)},0';"
         "$shortcut.Description='Cros Intelligence Center';$shortcut.Save()"
