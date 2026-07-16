@@ -71,8 +71,10 @@ If `python` is not recognized, try `py -3 -m pip install -r requirements.txt` in
 Close Cros first, open **PowerShell** (the prompt must start with `PS`, not `>>>`), and paste this block:
 
 ```powershell
-$repo = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "cros-intelligence-console"
-if (-not (Test-Path (Join-Path $repo "update_cros.ps1"))) { throw "Cros was not found at $repo. Change `$repo to your actual Cros folder." }
+$roots = @([Environment]::GetFolderPath("MyDocuments"), [Environment]::GetFolderPath("Desktop"), (Join-Path $HOME "Downloads"), $HOME) | Select-Object -Unique
+$updateFile = $roots | Where-Object { Test-Path $_ } | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter "update_cros.ps1" -File -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
+$repo = if ($updateFile) { $updateFile.Directory.FullName } else { Read-Host "Paste the full path to your Cros folder" }
+if (-not (Test-Path (Join-Path $repo "update_cros.ps1"))) { throw "That folder does not contain update_cros.ps1: $repo" }
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo "update_cros.ps1")
 ```
 
