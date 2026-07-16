@@ -103,6 +103,7 @@
             <button class="segment" data-filter="security">Security</button>
           </div>
           <div class="capability-pills">
+            <button data-quick="osint:19"><i class="pill-dot green"></i> NAMESNIPER</button>
             <button data-quick="security:1"><i class="pill-dot red"></i> RAT SCAN</button>
             <button data-quick="security:25"><i class="pill-dot violet"></i> POSTURE</button>
             <button data-quick="security:37"><i class="pill-dot cyan"></i> EXPOSURE</button>
@@ -365,6 +366,7 @@
     <div class="drawer-section"><label>CARD SHAPE</label><div class="shape-options" role="group" aria-label="Card corner shape"><button data-shape="soft" class="active">SOFT</button><button data-shape="sharp">SHARP</button><button data-shape="round">ROUND</button></div></div>
     <div class="drawer-section"><label>TOOL GRID</label><small>Choose the desktop card density. Smaller screens stay responsive.</small><div class="column-options" role="group" aria-label="Tool card columns"><button data-columns="auto" class="active">AUTO</button><button data-columns="3">3 COL</button><button data-columns="4">4 COL</button><button data-columns="5">5 COL</button></div></div>
     <div class="drawer-section"><button class="reset-appearance" id="reset-appearance">RESET APPEARANCE</button></div>
+    <div class="drawer-section"><label>DESKTOP ACCESS</label><small>Add a shortcut to this local Intelligence Center on your Windows desktop.</small><button class="reset-appearance" id="desktop-install-settings">ADD TO DESKTOP</button></div>
     <div class="drawer-section"><label>PORTABLE PROFILE</label><small>Move Cros preferences, keys, pins, notes, and map data to another PC using an encrypted backup.</small><input id="profile-passphrase" type="password" placeholder="Backup passphrase" autocomplete="new-password"><div class="profile-actions"><button id="profile-export" type="button">EXPORT ENCRYPTED</button><label class="profile-import">IMPORT BACKUP<input id="profile-import-file" type="file" accept="application/json,.json"></label></div></div>
     <div class="drawer-section"><button class="reset-appearance danger-action" id="clear-local-data">CLEAR LOCAL CROS DATA</button><small>Deletes saved pins, notes, map data, lessons, and local preferences.</small></div>
   </aside>

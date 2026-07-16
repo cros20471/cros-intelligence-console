@@ -1917,6 +1917,7 @@
     $("#operator-name").addEventListener("keydown", event => { if (event.key === "Enter") $("#save-operator-name").click(); });
     $("#settings-operator-name").addEventListener("change", event => applyOperatorName(event.target.value));
     $("#desktop-install-button").addEventListener("click", installDesktopShortcut);
+    $("#desktop-install-settings").addEventListener("click", installDesktopShortcut);
     $$('[data-accent]').forEach(button => button.addEventListener("click", () => setAccent(button.dataset.accent)));
     $("#custom-accent").addEventListener("input", event => setCustomAccent(event.target.value));
     $("#custom-background").value = localStorage.getItem("cros-background") || "#090b14";
