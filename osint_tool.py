@@ -53,6 +53,15 @@ def engine_dependency_path() -> Path:
     and ReportLab are Python-version-specific, and the old shared folder can
     otherwise make Blackbird import a broken _imaging extension.
     """
+    marker = ENGINE_DEPS_DIR / "active_runtime.txt"
+    try:
+        active_name = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        active_name = ""
+    if active_name and Path(active_name).name == active_name:
+        active = ENGINE_DEPS_DIR / active_name
+        if active.is_dir() and active.name.startswith(sys.implementation.cache_tag + "-"):
+            return active
     return engine_runtime_dir()
 
 

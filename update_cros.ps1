@@ -67,7 +67,8 @@ if (-not (Test-Path (Join-Path $engine "blackbird.py"))) { throw "Blackbird was 
 $engineRequirements = Join-Path $engine "requirements.txt"
 if (-not (Test-Path $engineRequirements)) { throw "Blackbird requirements.txt is missing." }
 $tag = (& $pythonExe @pythonArgs -c "import sys; print(sys.implementation.cache_tag)").Trim()
-$target = Join-Path $PSScriptRoot (Join-Path "engine_deps" $tag)
+$targetName = "$tag-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
+$target = Join-Path $PSScriptRoot (Join-Path "engine_deps" $targetName)
 New-Item -ItemType Directory -Force $target | Out-Null
 $packages = @(Get-Content $engineRequirements | ForEach-Object { $name = ($_ -split '[<>=!~\[]')[0].Trim(); if ($name -match '^[A-Za-z0-9_.-]+$') { $name } })
 function Stop-CrosProcesses {
@@ -83,18 +84,7 @@ function Stop-CrosProcesses {
 Stop-CrosProcesses
 & $pythonExe @pythonArgs -m pip install --disable-pip-version-check --target $target --upgrade @packages
 if ($LASTEXITCODE -ne 0) {
-  # OneDrive/Defender can briefly retain a compiled extension after shutdown.
-  # Retry from a clean, verified generated dependency directory.
-  Stop-CrosProcesses
-  $engineDepsRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "engine_deps")).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
-  $targetPath = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $target).Path).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
-  $allowedPrefix = $engineDepsRoot + [System.IO.Path]::DirectorySeparatorChar
-  if (-not $targetPath.StartsWith($allowedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Refusing to clean an engine dependency path outside the Cros folder."
-  }
-  Remove-Item -LiteralPath $targetPath -Recurse -Force
-  New-Item -ItemType Directory -Force $target | Out-Null
-  & $pythonExe @pythonArgs -m pip install --disable-pip-version-check --target $target @packages
-  if ($LASTEXITCODE -ne 0) { throw "Blackbird dependencies could not be installed. Close Cros and run the updater again." }
+  throw "Blackbird dependencies could not be installed in the new staging folder. Close Cros and run the updater again."
 }
+Set-Content -LiteralPath (Join-Path $PSScriptRoot "engine_deps\active_runtime.txt") -Value $targetName -Encoding ascii
 Start-Process -FilePath (Join-Path $PSScriptRoot "start_osint_tool.bat") -WorkingDirectory $PSScriptRoot
