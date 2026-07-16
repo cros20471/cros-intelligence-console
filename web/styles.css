@@ -125,7 +125,7 @@ button { cursor: pointer; }
 
 .brand { display: inline-flex; align-items: center; gap: 12px; border: 0; background: none; padding: 0; justify-self: start; }
 .brand-mark {
-  width: 42px; height: 42px; display: grid; place-items: center; position: relative;
+  width: 42px; height: 42px; flex: 0 0 42px; min-width: 42px; aspect-ratio: 1; display: grid; place-items: center; position: relative;
   border: 1px solid rgba(229, 226, 248, 0.52); border-radius: 50%; transform: none;
   background: rgba(255,255,255,0.025); box-shadow: inset 0 0 18px rgba(var(--accent-rgb),0.12);
 }
@@ -133,7 +133,7 @@ button { cursor: pointer; }
 .brand-mark::after { inset: 11px; border-color: rgba(255,255,255,0.15); }
 .brand-mark span { transform: none; font: 700 14px/1 var(--mono); letter-spacing: 0; z-index: 1; }
 .brand-mark.small { width: 34px; height: 34px; border-radius: 10px; }
-.brand-copy { display: grid; text-align: left; line-height: 1.1; }
+.brand-copy { display: grid; min-width: 0; overflow: hidden; text-align: left; line-height: 1.1; }
 .brand-copy strong { font-size: 16px; letter-spacing: 0.14em; }
 .brand-copy small { margin-top: 5px; color: var(--faint); font: 600 9px/1 var(--mono); letter-spacing: 0.18em; }
 
@@ -814,7 +814,7 @@ body.no-animations *, body.no-animations *::before, body.no-animations *::after 
   body.rail-collapsed .brand { width:42px; height:42px; margin:2px auto 0; padding:0; justify-content:center; border:1px solid rgba(var(--accent-rgb),.3); border-radius:12px; background:rgba(var(--accent-rgb),.08); }
   body.rail-collapsed .brand:focus { outline:none; }
   body.rail-collapsed .brand-copy { display:none !important; }
-  body.rail-collapsed .brand-mark { width:34px; height:34px; border-radius:50%; transform:none !important; border-color:rgba(var(--accent-rgb),.55); box-shadow:0 0 16px rgba(var(--accent-rgb),.16), inset 0 0 12px rgba(var(--accent-rgb),.12); }
+  body.rail-collapsed .brand-mark { width:34px; height:34px; flex:0 0 34px; min-width:34px; border-radius:50%; transform:none !important; border-color:rgba(var(--accent-rgb),.55); box-shadow:0 0 16px rgba(var(--accent-rgb),.16), inset 0 0 12px rgba(var(--accent-rgb),.12); }
   body.rail-collapsed .brand-mark::before { inset:5px; border-radius:50%; transform:none; }
   body.rail-collapsed .brand-mark::after { inset:9px; border-radius:50%; transform:none; }
   body.rail-collapsed .brand-mark span { transform:none; font-size:15px; letter-spacing:0; }
@@ -829,7 +829,7 @@ body.no-animations *, body.no-animations *::before, body.no-animations *::after 
   .topbar { min-height:58px; grid-template-columns:auto 1fr auto; gap:8px; padding:7px 9px; border-radius:16px; }
   .brand-copy, .nav-links, .key-hint, .local-state { display:none; }
   .brand { justify-self:start; }
-  .brand-mark { width:34px; height:34px; border-radius:10px; }
+  .brand-mark { width:34px; height:34px; flex-basis:34px; min-width:34px; border-radius:10px; }
   .top-actions { justify-self:end; }
 }
 @media (min-width: 1100px) {
