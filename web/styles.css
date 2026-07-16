@@ -126,12 +126,12 @@ button { cursor: pointer; }
 .brand { display: inline-flex; align-items: center; gap: 12px; border: 0; background: none; padding: 0; justify-self: start; }
 .brand-mark {
   width: 42px; height: 42px; display: grid; place-items: center; position: relative;
-  border: 1px solid rgba(229, 226, 248, 0.52); border-radius: 12px; transform: rotate(45deg);
+  border: 1px solid rgba(229, 226, 248, 0.52); border-radius: 50%; transform: none;
   background: rgba(255,255,255,0.025); box-shadow: inset 0 0 18px rgba(var(--accent-rgb),0.12);
 }
-.brand-mark::before, .brand-mark::after { content: ""; position: absolute; inset: 6px; border: 1px solid rgba(var(--accent-rgb),0.38); border-radius: 7px; }
+.brand-mark::before, .brand-mark::after { content: ""; position: absolute; inset: 6px; border: 1px solid rgba(var(--accent-rgb),0.38); border-radius: 50%; }
 .brand-mark::after { inset: 11px; border-color: rgba(255,255,255,0.15); }
-.brand-mark span { transform: rotate(-45deg); font: 700 14px/1 var(--mono); letter-spacing: -1px; z-index: 1; }
+.brand-mark span { transform: none; font: 700 14px/1 var(--mono); letter-spacing: 0; z-index: 1; }
 .brand-mark.small { width: 34px; height: 34px; border-radius: 10px; }
 .brand-copy { display: grid; text-align: left; line-height: 1.1; }
 .brand-copy strong { font-size: 16px; letter-spacing: 0.14em; }
@@ -788,7 +788,7 @@ body.no-animations *, body.no-animations *::before, body.no-animations *::after 
   body.rail-collapsed .brand { position:absolute; left:10px; top:10px; width:42px; height:42px; margin:0; padding:0; }
 }
 .brand { cursor:pointer; outline:none; }
-.brand:hover .brand-mark { border-color:rgba(var(--accent-rgb),.8); box-shadow:0 0 18px rgba(var(--accent-rgb),.2), inset 0 0 18px rgba(var(--accent-rgb),.12); transform:rotate(45deg) scale(1.04); }
+.brand:hover .brand-mark { border-color:rgba(var(--accent-rgb),.8); box-shadow:0 0 18px rgba(var(--accent-rgb),.2), inset 0 0 18px rgba(var(--accent-rgb),.12); transform:scale(1.04); }
 .brand:focus, .brand:focus-visible { outline:none; }
 @media (min-width: 1100px) {
   :root { --rail-width: 238px; }

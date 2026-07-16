@@ -20,8 +20,8 @@ import security_tools
 
 class CatalogTests(unittest.TestCase):
     def test_catalog_lessons_and_actions_stay_in_sync(self) -> None:
-        self.assertEqual(93, len(app_catalog.CATALOG))
-        self.assertEqual(93, len(app_catalog.TOOL_KEYS))
+        self.assertEqual(92, len(app_catalog.CATALOG))
+        self.assertEqual(92, len(app_catalog.TOOL_KEYS))
         self.assertEqual(app_catalog.TOOL_KEYS, set(learning_catalog.LEARNING))
         self.assertEqual(len(learning_catalog.SOURCES), len({item["id"] for item in learning_catalog.SOURCES}))
 
@@ -35,7 +35,7 @@ class CatalogTests(unittest.TestCase):
         html = (web / "index.html").read_text(encoding="utf-8")
         script = (web / "app.js").read_text(encoding="utf-8")
         styles = (web / "styles.css").read_text(encoding="utf-8")
-        for marker in ('id="tool-count-hero">93</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"', 'id="session-socials"', 'id="session-view-map"', 'id="workspace-customize"', 'id="workspace-width-control"', 'data-workspace-tab-size="large"'):
+        for marker in ('id="tool-count-hero">92</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"', 'id="session-socials"', 'id="session-view-map"', 'id="workspace-customize"', 'id="workspace-width-control"', 'data-workspace-tab-size="large"'):
             self.assertIn(marker, html)
         for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession", "addSocialToMap", "renderSessionSocialResults", "setWorkspaceTabSize", "setWorkspaceHomeView"):
             self.assertIn(marker, script)
@@ -144,9 +144,9 @@ class ApiTests(unittest.TestCase):
             catalog_status, catalog = get("/api/catalog")
             learning_status, learning = get("/api/learning")
             self.assertEqual(200, catalog_status)
-            self.assertEqual(93, catalog["count"])
+            self.assertEqual(92, catalog["count"])
             self.assertEqual(200, learning_status)
-            self.assertEqual(93, learning["count"])
+            self.assertEqual(92, learning["count"])
             with self.assertRaises(urllib.error.HTTPError) as denied:
                 get("/api/catalog", token="wrong")
             self.assertEqual(403, denied.exception.code)

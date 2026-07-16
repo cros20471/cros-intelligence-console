@@ -39,7 +39,6 @@ from image_analysis import analyze_image_file
 APP_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = APP_DIR / "pydeps"
 ENGINE_DEPS_DIR = APP_DIR / "engine_deps"
-NAMESNIPER_STATE_FILE = APP_DIR / "namesniper_state.json"
 
 
 def engine_runtime_dir() -> Path:
@@ -1332,7 +1331,7 @@ PANELS = [
     [("10", "IP Lookup"), ("11", "Subdomain Finder"), ("12", "WHOIS Lookup"),
      ("13", "DNS Lookup"), ("14", "SSL Checker")],
     [("15", "Photo / Face OSINT"), ("16", "Hash Generator"), ("17", "Change Color"),
-     ("18", "About"), ("19", "NameSniper"), ("20", "Exit"), ("21", "More Tools"), ("22", "Security Center")],
+     ("18", "About"), ("19", "Exit"), ("20", "More Tools"), ("21", "Security Center")],
 ]
 
 
@@ -1446,7 +1445,7 @@ def menu() -> str:
 
 
 MAIN_ACTIONS = {
-    "1": username_search, "2": lambda: username_search(True), "3": email_search, "19": namesniper,
+    "1": username_search, "2": lambda: username_search(True), "3": email_search,
     "4": breach_hunter, "5": port_check, "6": wayback, "7": google_dork,
     "8": pastebin_checker, "9": url_scraper, "10": ip_lookup,
     "11": subdomain_finder, "12": whois_lookup, "13": dns_lookup,

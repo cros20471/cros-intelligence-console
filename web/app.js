@@ -73,7 +73,7 @@
     return payload;
   }
 
-  const APPEARANCE_KEYS = ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose"];
+  const APPEARANCE_KEYS = ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose", "cros-operator-name"];
   let appearanceSaveTimer = 0;
   function appearanceSnapshot() { return Object.fromEntries(APPEARANCE_KEYS.filter(key => localStorage.getItem(key) !== null).map(key => [key, localStorage.getItem(key)])); }
   function queueAppearanceSave() { clearTimeout(appearanceSaveTimer); appearanceSaveTimer = setTimeout(() => { api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }, 180); }
@@ -94,7 +94,7 @@
   function applyOperatorName(value, save = true) {
     const name = String(value || "").trim().replace(/\s+/g, " ").slice(0, 40);
     if (!name) return false;
-    if (save) localStorage.setItem("cros-operator-name", name);
+    if (save) { localStorage.setItem("cros-operator-name", name); queueAppearanceSave(); }
     $("#operator-name").value = name;
     $("#settings-operator-name").value = name;
     $("#brand-welcome").textContent = `WELCOME, ${name.toUpperCase()}`;
@@ -1198,7 +1198,7 @@
   }
 
   function updateLearningProgress() {
-    const total = Object.keys(state.lessons).length || state.tools.length || 93;
+    const total = Object.keys(state.lessons).length || state.tools.length || 92;
     const complete = [...state.completedLessons].filter(key => state.lessons[key]).length;
     $("#learning-progress-count").textContent = `${complete} / ${total}`;
     $("#learning-progress-bar").style.width = `${total ? (complete / total) * 100 : 0}%`;
