@@ -39,6 +39,7 @@ from image_analysis import analyze_image_file
 APP_DIR = Path(__file__).resolve().parent
 VENDOR_DIR = APP_DIR / "pydeps"
 ENGINE_DEPS_DIR = APP_DIR / "engine_deps"
+NAMESNIPER_STATE_FILE = APP_DIR / "namesniper_state.json"
 
 
 def engine_runtime_dir() -> Path:
@@ -377,43 +378,105 @@ def email_search() -> None:
     run_blackbird("email", [email])
 
 
-def namesniper() -> None:
-    """Check one public Minecraft name through PlayerDB without opening a tab."""
-    mode = Prompt.ask("NameSniper mode", choices=["lookup", "generate"], default="lookup").strip().lower()
-    if mode == "generate":
-        count = max(1, min(50, IntPrompt.ask("How many names", default=10)))
-        alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_"
-        generated = set()
-        while len(generated) < count:
-            length = secrets.choice(range(3, 17))
-            generated.add("".join(secrets.choice(alphabet) for _ in range(length)))
-        console.print("\n[bold]Generated local candidates[/]")
-        for candidate in sorted(generated): console.print(f"• {candidate}")
-        console.print("These are candidates only; use lookup mode to check each public name.")
-        pause(); return
-    raw = Prompt.ask("Minecraft name").strip().lower()
-    if not re.fullmatch(r"[a-z0-9_]{3,16}", raw):
-        console.print("[red]Use 3–16 lowercase letters, numbers, or underscores.[/]")
-        pause(); return
-    url = "https://playerdb.co/api/player/minecraft/" + urllib.parse.quote(raw, safe="")
-    console.print(f"\n[bold]NameSniper[/] checking [cyan]{raw}[/] through the public PlayerDB endpoint…")
+def _namesniper_watchlist() -> list[str]:
+    try:
+        value = json.loads(NAMESNIPER_STATE_FILE.read_text(encoding="utf-8"))
+        names = value.get("watchlist", []) if isinstance(value, dict) else []
+        return sorted({name for name in names if isinstance(name, str) and re.fullmatch(r"[a-z0-9_]{3,16}", name)})[:500]
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_namesniper_watchlist(names: list[str]) -> None:
+    temporary = NAMESNIPER_STATE_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"watchlist": sorted(set(names))}, indent=2), encoding="utf-8")
+    os.replace(temporary, NAMESNIPER_STATE_FILE)
+
+
+def _namesniper_lookup(name: str) -> dict:
+    url = "https://playerdb.co/api/player/minecraft/" + urllib.parse.quote(name, safe="")
     try:
         response = requests.get(url, timeout=15, headers={"User-Agent": "Cros-Intelligence-Console/1.0"})
         if not getattr(response, "ok", False) and int(getattr(response, "status_code", 500)) >= 400:
-            raise requests.RequestException(f"HTTP {response.status_code}")
+            return {"name": name, "status": "unknown", "detail": f"HTTP {response.status_code}"}
         payload = response.json()
     except (requests.RequestException, ValueError) as exc:
-        console.print(f"[red]PlayerDB could not be reached: {exc}[/]"); pause(); return
+        return {"name": name, "status": "unknown", "detail": str(exc)}
     player = payload.get("data", {}).get("player", {}) if isinstance(payload, dict) else {}
-    if not payload.get("success") or not player:
-        console.print(f"[green]AVAILABLE[/]  {raw} was not found in PlayerDB.")
-        console.print("No account, email address, or private information is collected.")
-        pause(); return
-    console.print(f"[yellow]FOUND[/]  {player.get('username') or raw}")
-    for label, key in (("UUID", "id"), ("Avatar", "avatar"), ("Skin", "skin"), ("Cape", "cape")):
-        value = player.get(key)
-        if value: console.print(f"{label}: {value}")
-    console.print("Public profile data only. Verify ownership before linking it to a person.")
+    if not isinstance(payload, dict) or not payload.get("success") or not player:
+        return {"name": name, "status": "available"}
+    return {"name": name, "status": "taken", "player": player}
+
+
+def _namesniper_print_result(result: dict) -> None:
+    name, status = result["name"], result["status"]
+    if status == "available":
+        console.print(f"[green]AVAILABLE[/]  {name}")
+    elif status == "taken":
+        player = result.get("player", {})
+        console.print(f"[yellow]TAKEN[/]      {player.get('username') or name}  UUID: {player.get('id', 'unknown')}")
+    else:
+        console.print(f"[red]UNKNOWN[/]    {name}  {result.get('detail', 'lookup failed')}")
+
+
+def _namesniper_generate() -> list[str]:
+    length = Prompt.ask("Length", choices=["3", "4", "5", "6", "any"], default="3")
+    charset_choice = Prompt.ask("Characters", choices=["letters", "letters+numbers", "letters+numbers+underscore"], default="letters")
+    pattern = Prompt.ask("Pattern", choices=["random", "cvce", "word_num", "num_word", "double"], default="random")
+    count = max(1, min(50, IntPrompt.ask("How many names", default=10)))
+    lengths = [int(length)] if length != "any" else list(range(3, 17))
+    charset = "abcdefghijklmnopqrstuvwxyz"
+    if "numbers" in charset_choice: charset += "0123456789"
+    if "underscore" in charset_choice: charset += "_"
+    vowels, consonants = "aeiou", "bcdfghjklmnpqrstvwxyz"
+    generated = set()
+    while len(generated) < count:
+        size = secrets.choice(lengths)
+        if pattern == "cvce": value = "".join(secrets.choice(consonants if i % 2 == 0 else vowels) for i in range(size))
+        elif pattern == "double":
+            half = "".join(secrets.choice(charset) for _ in range((size + 1) // 2)); value = (half + half)[:size]
+        else:
+            value = "".join(secrets.choice(charset) for _ in range(size))
+            if pattern == "word_num": value = "".join(secrets.choice(vowels if i % 2 else consonants) for i in range(max(1, size - max(1, size // 3)))) + "".join(secrets.choice("0123456789") for _ in range(max(1, size // 3)))
+            if pattern == "num_word": value = "".join(secrets.choice("0123456789") for _ in range(max(1, size // 3))) + "".join(secrets.choice(vowels if i % 2 else consonants) for i in range(size - max(1, size // 3)))
+        generated.add(value[:16])
+    return sorted(generated)
+
+
+def namesniper() -> None:
+    """Run the local NameSniper workflow inside the Cros session."""
+    mode = Prompt.ask("NameSniper mode", choices=["lookup", "watchlist", "generate"], default="lookup").strip().lower()
+    watchlist = _namesniper_watchlist()
+    if mode == "generate":
+        names = _namesniper_generate()
+        auto_add = Confirm.ask("Add generated names to watchlist?", default=False)
+        if auto_add:
+            watchlist = sorted(set(watchlist + names)); _save_namesniper_watchlist(watchlist)
+        console.print("\n[bold]Generated local candidates[/]")
+        for name in names: console.print(f"• {name}")
+        if Confirm.ask("Check these names now?", default=True):
+            for name in names: _namesniper_print_result(_namesniper_lookup(name))
+        console.print("These are candidates only; availability can change before a name is claimed."); pause(); return
+    if mode == "watchlist":
+        action = Prompt.ask("Watchlist action", choices=["check", "add", "remove", "clear"], default="check")
+        if action == "clear":
+            _save_namesniper_watchlist([]); console.print("Watchlist cleared."); pause(); return
+        if action in {"add", "remove"}:
+            values = [v.strip().lower().lstrip("@") for v in Prompt.ask("Names, comma-separated").split(",")]
+            values = [v for v in values if re.fullmatch(r"[a-z0-9_]{3,16}", v)]
+            watchlist = sorted(set(watchlist + values) if action == "add" else set(watchlist) - set(values)); _save_namesniper_watchlist(watchlist)
+        length = Prompt.ask("Length filter", choices=["3", "4", "5", "any"], default="any")
+        names = [v for v in watchlist if length == "any" or len(v) == int(length)]
+    else:
+        raw = Prompt.ask("Minecraft name or comma-separated names").strip().lower()
+        names = [v.strip().lstrip("@") for v in raw.split(",") if re.fullmatch(r"[a-z0-9_]{3,16}", v.strip().lstrip("@"))]
+        length = Prompt.ask("Length filter", choices=["3", "4", "5", "any"], default="any")
+        names = [v for v in names if length == "any" or len(v) == int(length)]
+    if not names: console.print("[yellow]No valid names matched that filter.[/]")
+    else:
+        console.print(f"\n[bold]Checking {len(names)} public Minecraft name(s)…[/]")
+        for name in names: _namesniper_print_result(_namesniper_lookup(name))
+    console.print("No email addresses, private account data, or credentials are collected.")
     pause()
 
 
