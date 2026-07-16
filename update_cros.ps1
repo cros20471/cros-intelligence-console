@@ -86,9 +86,10 @@ if ($LASTEXITCODE -ne 0) {
   # OneDrive/Defender can briefly retain a compiled extension after shutdown.
   # Retry from a clean, verified generated dependency directory.
   Stop-CrosProcesses
-  $repoRoot = (Resolve-Path -LiteralPath $PSScriptRoot).Path.TrimEnd('\\')
-  $targetPath = (Resolve-Path -LiteralPath $target).Path.TrimEnd('\\')
-  if (-not $targetPath.StartsWith($repoRoot + '\\', [System.StringComparison]::OrdinalIgnoreCase)) {
+  $engineDepsRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "engine_deps")).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+  $targetPath = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $target).Path).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+  $allowedPrefix = $engineDepsRoot + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $targetPath.StartsWith($allowedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to clean an engine dependency path outside the Cros folder."
   }
   Remove-Item -LiteralPath $targetPath -Recurse -Force
