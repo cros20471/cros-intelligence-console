@@ -77,6 +77,7 @@
   let appearanceSaveTimer = 0;
   function appearanceSnapshot() { return Object.fromEntries(APPEARANCE_KEYS.filter(key => localStorage.getItem(key) !== null).map(key => [key, localStorage.getItem(key)])); }
   function queueAppearanceSave() { clearTimeout(appearanceSaveTimer); appearanceSaveTimer = setTimeout(() => { api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }, 180); }
+  function saveAppearanceNow() { clearTimeout(appearanceSaveTimer); api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }
   async function restoreAppearanceFromServer() { try { const saved = await api("/api/appearance"); Object.entries(saved || {}).forEach(([key, value]) => { if (APPEARANCE_KEYS.includes(key)) localStorage.setItem(key, String(value)); }); } catch (_) {} }
 
   function toast(title, message, error = false) {
@@ -94,7 +95,7 @@
   function applyOperatorName(value, save = true) {
     const name = String(value || "").trim().replace(/\s+/g, " ").slice(0, 40);
     if (!name) return false;
-    if (save) { localStorage.setItem("cros-operator-name", name); queueAppearanceSave(); }
+    if (save) { localStorage.setItem("cros-operator-name", name); saveAppearanceNow(); }
     $("#operator-name").value = name;
     $("#settings-operator-name").value = name;
     $("#brand-welcome").textContent = `WELCOME, ${name.toUpperCase()}`;

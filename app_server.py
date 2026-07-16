@@ -258,6 +258,7 @@ APPEARANCE_KEYS = {
     "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles",
     "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density",
     "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose",
+    "cros-operator-name",
 }
 HEX_APPEARANCE_KEYS = {"cros-custom-accent", "cros-background", "cros-star-color"}
 
@@ -269,7 +270,7 @@ def clean_appearance_state(value: object) -> dict[str, str]:
         raw = source.get(key)
         if raw is None:
             continue
-        text = _short_text(raw, 32)
+        text = _short_text(raw, 40 if key == "cros-operator-name" else 32)
         if key in HEX_APPEARANCE_KEYS and not re.fullmatch(r"#[0-9a-fA-F]{6}", text):
             continue
         if key == "cros-accent" and text not in {"violet", "cyan", "red", "green", "amber", "ice", "custom"}:
@@ -279,6 +280,8 @@ def clean_appearance_state(value: object) -> dict[str, str]:
         if key == "cros-columns" and text not in {"auto", "3", "4", "5"}:
             continue
         if key == "cros-rail-autoclose" and text not in {"0", "3000", "5000", "10000"}:
+            continue
+        if key == "cros-operator-name" and not re.fullmatch(r"[^\r\n]{1,40}", text):
             continue
         if key in {"cros-particles", "cros-wings", "cros-compact", "cros-animations"} and text not in {"true", "false"}:
             continue
