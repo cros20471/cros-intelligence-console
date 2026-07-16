@@ -377,6 +377,46 @@ def email_search() -> None:
     run_blackbird("email", [email])
 
 
+def namesniper() -> None:
+    """Check one public Minecraft name through PlayerDB without opening a tab."""
+    mode = Prompt.ask("NameSniper mode", choices=["lookup", "generate"], default="lookup").strip().lower()
+    if mode == "generate":
+        count = max(1, min(50, IntPrompt.ask("How many names", default=10)))
+        alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_"
+        generated = set()
+        while len(generated) < count:
+            length = secrets.choice(range(3, 17))
+            generated.add("".join(secrets.choice(alphabet) for _ in range(length)))
+        console.print("\n[bold]Generated local candidates[/]")
+        for candidate in sorted(generated): console.print(f"• {candidate}")
+        console.print("These are candidates only; use lookup mode to check each public name.")
+        pause(); return
+    raw = Prompt.ask("Minecraft name").strip().lower()
+    if not re.fullmatch(r"[a-z0-9_]{3,16}", raw):
+        console.print("[red]Use 3–16 lowercase letters, numbers, or underscores.[/]")
+        pause(); return
+    url = "https://playerdb.co/api/player/minecraft/" + urllib.parse.quote(raw, safe="")
+    console.print(f"\n[bold]NameSniper[/] checking [cyan]{raw}[/] through the public PlayerDB endpoint…")
+    try:
+        response = requests.get(url, timeout=15, headers={"User-Agent": "Cros-Intelligence-Console/1.0"})
+        if not getattr(response, "ok", False) and int(getattr(response, "status_code", 500)) >= 400:
+            raise requests.RequestException(f"HTTP {response.status_code}")
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        console.print(f"[red]PlayerDB could not be reached: {exc}[/]"); pause(); return
+    player = payload.get("data", {}).get("player", {}) if isinstance(payload, dict) else {}
+    if not payload.get("success") or not player:
+        console.print(f"[green]AVAILABLE[/]  {raw} was not found in PlayerDB.")
+        console.print("No account, email address, or private information is collected.")
+        pause(); return
+    console.print(f"[yellow]FOUND[/]  {player.get('username') or raw}")
+    for label, key in (("UUID", "id"), ("Avatar", "avatar"), ("Skin", "skin"), ("Cape", "cape")):
+        value = player.get(key)
+        if value: console.print(f"{label}: {value}")
+    console.print("Public profile data only. Verify ownership before linking it to a person.")
+    pause()
+
+
 def dns_lookup() -> None:
     host = clean_host(Prompt.ask("Domain"))
     table = Table(title=f"Addresses for {host}", box=BOXES.get(settings["box_style"], box.ROUNDED))
@@ -1229,7 +1269,7 @@ PANELS = [
     [("10", "IP Lookup"), ("11", "Subdomain Finder"), ("12", "WHOIS Lookup"),
      ("13", "DNS Lookup"), ("14", "SSL Checker")],
     [("15", "Photo / Face OSINT"), ("16", "Hash Generator"), ("17", "Change Color"),
-     ("18", "About"), ("19", "Exit"), ("20", "More Tools"), ("21", "Security Center")],
+     ("18", "About"), ("19", "NameSniper"), ("20", "Exit"), ("21", "More Tools"), ("22", "Security Center")],
 ]
 
 
@@ -1343,7 +1383,7 @@ def menu() -> str:
 
 
 MAIN_ACTIONS = {
-    "1": username_search, "2": lambda: username_search(True), "3": email_search,
+    "1": username_search, "2": lambda: username_search(True), "3": email_search, "19": namesniper,
     "4": breach_hunter, "5": port_check, "6": wayback, "7": google_dork,
     "8": pastebin_checker, "9": url_scraper, "10": ip_lookup,
     "11": subdomain_finder, "12": whois_lookup, "13": dns_lookup,

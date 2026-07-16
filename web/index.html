@@ -21,9 +21,9 @@
   <header class="top-shell">
     <nav class="topbar" aria-label="Primary navigation">
       <button class="rail-resize-handle" id="rail-resize-handle" aria-label="Resize navigation rail"></button>
-      <button class="brand" data-scroll="home" aria-label="Cros home">
+      <button class="brand" data-scroll="home" aria-label="Intelligence Center home">
         <span class="brand-mark"><span>C</span></span>
-        <span class="brand-copy"><strong>CROS</strong><small>INTELLIGENCE CONSOLE</small></span>
+        <span class="brand-copy"><strong id="brand-name">INTELLIGENCE CENTER</strong><small id="brand-welcome">WELCOME, OPERATOR</small></span>
       </button>
       <div class="nav-links">
         <button class="nav-link active" data-view="home">Overview</button>
@@ -48,9 +48,9 @@
       <div class="hero-copy">
         <div class="eyebrow"><span></span> PRIVATE WORKSTATION / WINDOWS</div>
         <h1 id="hero-title">One console.<br><em>Every signal.</em></h1>
-        <p>Public-source intelligence, local analysis, and defensive Windows security in one focused workspace. Nothing is uploaded unless a tool clearly tells you first.</p>
+        <p id="hero-welcome-copy">Public-source intelligence, local analysis, and defensive Windows security in one focused workspace. Nothing is uploaded unless a tool clearly tells you first.</p>
         <div class="hero-meta">
-          <span><b id="tool-count-hero">92</b> TOOLS INDEXED</span>
+          <span><b id="tool-count-hero">93</b> TOOLS INDEXED</span>
           <span><b>127.0.0.1</b> LOCAL BIND</span>
           <span><b>READ-ONLY</b> BY DEFAULT</span>
         </div>
@@ -250,7 +250,7 @@
     <section class="learning-section" id="learning" aria-labelledby="learning-title">
       <div class="section-heading learning-heading">
         <div><span class="section-index">03</span><h2 id="learning-title">Learning center</h2><p>Click any lesson for a clear purpose, required tools, safe workflow, result guidance, and supporting sources.</p></div>
-        <div class="learning-progress" aria-label="Lesson progress"><span>PROGRESS</span><strong id="learning-progress-count">0 / 92</strong><i><b id="learning-progress-bar"></b></i></div>
+        <div class="learning-progress" aria-label="Lesson progress"><span>PROGRESS</span><strong id="learning-progress-count">0 / 93</strong><i><b id="learning-progress-bar"></b></i></div>
       </div>
 
       <div class="learning-nav" role="tablist" aria-label="Learning center sections">
@@ -271,7 +271,7 @@
           <div class="lesson-list" id="lesson-list" aria-label="Available lessons"></div>
         </aside>
         <article class="lesson-detail" id="lesson-detail" aria-live="polite">
-          <div class="lesson-empty"><span id="lesson-empty-count">92 STEP-BY-STEP LESSONS</span><h3>Choose a tool to learn it</h3><p>Every lesson explains when to use the tool, what you need, the safest workflow, and how to read the result.</p></div>
+          <div class="lesson-empty"><span id="lesson-empty-count">93 STEP-BY-STEP LESSONS</span><h3>Choose a tool to learn it</h3><p>Every lesson explains when to use the tool, what you need, the safest workflow, and how to read the result.</p></div>
         </article>
       </div>
 
@@ -316,6 +316,11 @@
           <div id="session-social-list"></div>
           <small>Blackbird detected these public account pages. Verify profile details before treating separate accounts as the same person.</small>
         </section>
+        <section class="session-socials session-emails" id="session-emails" hidden aria-labelledby="session-emails-title">
+          <header><div><span>PUBLIC EMAIL REFERENCES</span><h4 id="session-emails-title">Found emails</h4></div></header>
+          <div id="session-email-list"></div>
+          <small>These addresses appeared in live tool output. Cros does not save them beyond this local session.</small>
+        </section>
         <details class="session-log"><summary>LIVE ENGINE LOG</summary><pre class="session-output" id="session-output" aria-live="polite">Tool output will appear here in real time.</pre></details>
         <form class="session-input-form" id="session-input-form" autocomplete="off">
           <label><span>REPLY TO TOOL</span><input id="session-input" placeholder="Type an answer when the tool asks" maxlength="4096"></label>
@@ -328,8 +333,8 @@
   <button class="workspace-restore" id="workspace-restore" hidden>OPEN WORKSPACE</button>
 
   <footer>
-    <div class="footer-brand"><span class="brand-mark small"><span>C</span></span><div><strong>CROS // INTELLIGENCE CONSOLE</strong><small>Local defensive research workstation</small></div></div>
-    <div class="footer-actions"><button data-open="folder">OPEN DATA FOLDER</button><button data-learning-footer="tutorials">LEARNING CENTER</button><button data-learning-footer="sources">SOURCES</button><button id="exit-button">CLOSE APP</button></div>
+    <div class="footer-brand"><span class="brand-mark small"><span>C</span></span><div><strong>INTELLIGENCE CENTER</strong><small>Local public-information research workstation</small></div></div>
+    <div class="footer-actions"><button data-open="folder">OPEN DATA FOLDER</button><button id="desktop-install-button">ADD TO DESKTOP</button><button data-learning-footer="tutorials">LEARNING CENTER</button><button data-learning-footer="sources">SOURCES</button><button id="exit-button">CLOSE APP</button></div>
   </footer>
 
   <div class="command-layer" id="command-layer" hidden>
@@ -344,6 +349,7 @@
   <aside class="settings-drawer" id="settings-drawer" aria-label="Appearance settings" aria-hidden="true">
     <div class="drawer-head"><div><span>INTERFACE</span><h2>Appearance</h2></div><button class="icon-button" id="settings-close" aria-label="Close settings">×</button></div>
     <div class="drawer-section"><label>INTERFACE COLOR</label><div class="swatches"><button data-accent="violet" class="active" aria-label="Violet"></button><button data-accent="cyan" aria-label="Cyan"></button><button data-accent="red" aria-label="Red"></button><button data-accent="green" aria-label="Green"></button><button data-accent="amber" aria-label="Amber"></button><button data-accent="ice" aria-label="Ice"></button></div><label class="custom-color">CUSTOM COLOR <input id="custom-accent" type="color" value="#8566ff" aria-label="Choose custom interface color"></label></div>
+    <div class="drawer-section"><label for="settings-operator-name">OPERATOR NAME</label><small>Stored locally and used in your welcome label.</small><input id="settings-operator-name" type="text" maxlength="40" placeholder="Your name" autocomplete="name"></div>
     <div class="drawer-section"><label for="custom-background">BACKGROUND COLOR</label><small>Choose the base tone behind the console.</small><input id="custom-background" type="color" value="#090b14" aria-label="Choose background color"></div>
     <div class="drawer-section"><label for="custom-stars">STAR COLOR</label><small>Choose the color used by the ambient stars and pointer trails.</small><input id="custom-stars" type="color" value="#9ca9ff" aria-label="Choose star color"></div>
     <div class="drawer-section setting-row"><div><label>PARTICLE FIELD</label><small>Animated local signal map</small></div><button class="toggle active" id="particle-toggle" aria-pressed="true"><i></i></button></div>
@@ -372,6 +378,16 @@
   </div>
 
   <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+  <div class="welcome-layer" id="welcome-layer" hidden>
+    <section class="welcome-panel" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+      <span class="section-index">LOCAL PROFILE</span>
+      <h2 id="welcome-title">Make the console yours</h2>
+      <p>Your name is stored only on this computer and is used for the welcome label. You can change it later in Settings.</p>
+      <label for="operator-name">YOUR NAME</label>
+      <input id="operator-name" maxlength="40" autocomplete="name" placeholder="e.g. Alex">
+      <button class="primary-button" id="save-operator-name">ENTER INTELLIGENCE CENTER <span>→</span></button>
+    </section>
+  </div>
   <script src="/app.js" defer></script>
 </body>
 </html>

@@ -20,8 +20,8 @@ import security_tools
 
 class CatalogTests(unittest.TestCase):
     def test_catalog_lessons_and_actions_stay_in_sync(self) -> None:
-        self.assertEqual(92, len(app_catalog.CATALOG))
-        self.assertEqual(92, len(app_catalog.TOOL_KEYS))
+        self.assertEqual(93, len(app_catalog.CATALOG))
+        self.assertEqual(93, len(app_catalog.TOOL_KEYS))
         self.assertEqual(app_catalog.TOOL_KEYS, set(learning_catalog.LEARNING))
         self.assertEqual(len(learning_catalog.SOURCES), len({item["id"] for item in learning_catalog.SOURCES}))
 
@@ -35,9 +35,9 @@ class CatalogTests(unittest.TestCase):
         html = (web / "index.html").read_text(encoding="utf-8")
         script = (web / "app.js").read_text(encoding="utf-8")
         styles = (web / "styles.css").read_text(encoding="utf-8")
-        for marker in ('id="tool-count-hero">92</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"', 'id="workspace-customize"', 'id="workspace-width-control"', 'data-workspace-tab-size="large"'):
+        for marker in ('id="tool-count-hero">93</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"', 'id="session-socials"', 'id="session-view-map"', 'id="workspace-customize"', 'id="workspace-width-control"', 'data-workspace-tab-size="large"'):
             self.assertIn(marker, html)
-        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession", "setWorkspaceTabSize", "setWorkspaceHomeView"):
+        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession", "addSocialToMap", "renderSessionSocialResults", "setWorkspaceTabSize", "setWorkspaceHomeView"):
             self.assertIn(marker, script)
         self.assertIn("content-visibility: auto", styles)
         self.assertIn("body.fixed-columns .tool-grid", styles)
@@ -94,6 +94,25 @@ class ToolSmokeTests(unittest.TestCase):
 
 
 class ApiTests(unittest.TestCase):
+    def test_blackbird_social_results_only_returns_found_social_sites(self) -> None:
+        output = (
+            "  \u2714\ufe0f  [Instagram] https://www.instagram.com/example/\n"
+            "  \u2714  [GitHub] https://github.com/example\n"
+            "  \u2713  [Reddit] https://www.reddit.com/user/example\n"
+            "  \u2714  [Instagram] https://www.instagram.com/example/\n"
+            "  \u2714  [Instagram] javascript:alert(1)\n"
+        )
+        with patch.object(app_server, "BLACKBIRD_SOCIAL_NAMES", frozenset({"instagram", "reddit"})):
+            results = app_server.blackbird_social_results(output, "example")
+        self.assertEqual([
+            {"platform": "Instagram", "url": "https://www.instagram.com/example/", "username": "example"},
+            {"platform": "Reddit", "url": "https://www.reddit.com/user/example", "username": "example"},
+        ], results)
+
+    def test_blackbird_engine_packages_are_scoped_to_python_abi(self) -> None:
+        self.assertEqual(osint_tool.ENGINE_DEPS_DIR / osint_tool.sys.implementation.cache_tag,
+                         osint_tool.engine_runtime_dir())
+
     def test_workspace_and_session_inputs_are_sanitized(self) -> None:
         cleaned = app_server.clean_workspace_state({
             "favorite_tools": ["osint:1", "missing:999"],
@@ -125,9 +144,9 @@ class ApiTests(unittest.TestCase):
             catalog_status, catalog = get("/api/catalog")
             learning_status, learning = get("/api/learning")
             self.assertEqual(200, catalog_status)
-            self.assertEqual(92, catalog["count"])
+            self.assertEqual(93, catalog["count"])
             self.assertEqual(200, learning_status)
-            self.assertEqual(92, learning["count"])
+            self.assertEqual(93, learning["count"])
             with self.assertRaises(urllib.error.HTTPError) as denied:
                 get("/api/catalog", token="wrong")
             self.assertEqual(403, denied.exception.code)

@@ -55,6 +55,8 @@
     sessionDone: true,
     sessionSocialResults: [],
     sessionSocialSignature: "",
+    sessionEmailResults: [],
+    sessionEmailSignature: "",
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -87,6 +89,30 @@
     item.append(strong, span);
     $("#toast-stack").append(item);
     setTimeout(() => item.remove(), 3800);
+  }
+
+  function applyOperatorName(value, save = true) {
+    const name = String(value || "").trim().replace(/\s+/g, " ").slice(0, 40);
+    if (!name) return false;
+    if (save) localStorage.setItem("cros-operator-name", name);
+    $("#operator-name").value = name;
+    $("#settings-operator-name").value = name;
+    $("#brand-welcome").textContent = `WELCOME, ${name.toUpperCase()}`;
+    $("#hero-welcome-copy").textContent = `${name}, this is your local Intelligence Center for public-source research, local analysis, and defensive Windows security. Nothing is uploaded unless a tool clearly tells you first.`;
+    return true;
+  }
+
+  function restoreOperatorName() {
+    const saved = localStorage.getItem("cros-operator-name") || "";
+    if (saved) applyOperatorName(saved, false);
+    else $("#welcome-layer").hidden = false;
+  }
+
+  async function installDesktopShortcut() {
+    try {
+      await api("/api/install-desktop", { method: "POST", body: "{}" });
+      toast("Desktop shortcut added", "Cros is now available from your Windows desktop.");
+    } catch (error) { toast("Could not add shortcut", error.message, true); }
   }
 
   function codeFor(tool) {
@@ -731,6 +757,29 @@
     });
   }
 
+  async function copyEmail(value, button) {
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+      else { const field = document.createElement("textarea"); field.value = value; field.style.position = "fixed"; field.style.opacity = "0"; document.body.append(field); field.select(); document.execCommand("copy"); field.remove(); }
+      const original = button.textContent; button.textContent = "COPIED"; button.disabled = true;
+      setTimeout(() => { button.textContent = original; button.disabled = false; }, 1400);
+    } catch (_) { toast("Could not copy email", "Select the address and copy it manually.", true); }
+  }
+
+  function renderSessionEmailResults() {
+    const section = $("#session-emails");
+    const root = $("#session-email-list");
+    section.hidden = !state.sessionEmailResults.length;
+    root.replaceChildren();
+    state.sessionEmailResults.forEach(value => {
+      const row = document.createElement("div"); row.className = "session-social-row";
+      const email = document.createElement("strong"); email.textContent = value;
+      const button = document.createElement("button"); button.type = "button"; button.className = "secondary"; button.textContent = "COPY";
+      button.addEventListener("click", () => copyEmail(value, button));
+      row.append(email, button); root.append(row);
+    });
+  }
+
   async function pollToolSession() {
     if (!state.sessionId) return;
     const sessionId = state.sessionId;
@@ -751,6 +800,14 @@
           state.sessionSocialSignature = signature;
           state.sessionSocialResults = payload.social_results;
           renderSessionSocialResults();
+        }
+      }
+      if (Array.isArray(payload.email_results)) {
+        const signature = JSON.stringify(payload.email_results);
+        if (signature !== state.sessionEmailSignature) {
+          state.sessionEmailSignature = signature;
+          state.sessionEmailResults = payload.email_results;
+          renderSessionEmailResults();
         }
       }
       updateSessionProgress(payload);
@@ -785,7 +842,10 @@
     state.sessionDone = false;
     state.sessionSocialResults = [];
     state.sessionSocialSignature = "";
+    state.sessionEmailResults = [];
+    state.sessionEmailSignature = "";
     renderSessionSocialResults();
+    renderSessionEmailResults();
     updateSessionProgress({ done: false, stage: "Starting local tool", elapsed_ms: 0 });
     try {
       const payload = await api("/api/session/start", {
@@ -1138,7 +1198,7 @@
   }
 
   function updateLearningProgress() {
-    const total = Object.keys(state.lessons).length || state.tools.length || 92;
+    const total = Object.keys(state.lessons).length || state.tools.length || 93;
     const complete = [...state.completedLessons].filter(key => state.lessons[key]).length;
     $("#learning-progress-count").textContent = `${complete} / ${total}`;
     $("#learning-progress-bar").style.width = `${total ? (complete / total) * 100 : 0}%`;
@@ -1850,6 +1910,13 @@
     $("#settings-button").addEventListener("click", () => setSettingsOpen(!$("#settings-drawer").classList.contains("open")));
     $("#search-settings").addEventListener("click", () => setSettingsOpen(true));
     $("#settings-close").addEventListener("click", () => setSettingsOpen(false));
+    $("#save-operator-name").addEventListener("click", () => {
+      if (applyOperatorName($("#operator-name").value)) $("#welcome-layer").hidden = true;
+      else toast("Name required", "Enter a name for your local welcome label.", true);
+    });
+    $("#operator-name").addEventListener("keydown", event => { if (event.key === "Enter") $("#save-operator-name").click(); });
+    $("#settings-operator-name").addEventListener("change", event => applyOperatorName(event.target.value));
+    $("#desktop-install-button").addEventListener("click", installDesktopShortcut);
     $$('[data-accent]').forEach(button => button.addEventListener("click", () => setAccent(button.dataset.accent)));
     $("#custom-accent").addEventListener("input", event => setCustomAccent(event.target.value));
     $("#custom-background").value = localStorage.getItem("cros-background") || "#090b14";
@@ -1934,6 +2001,7 @@
     setupWorkspaceDock();
     await restoreAppearanceFromServer();
     restoreSettings();
+    restoreOperatorName();
     renderPins();
     renderPinnedTools();
     renderGraph();

@@ -45,6 +45,7 @@ CATALOG += _rows("osint", "Media and Workspace", [
     ("16", "Hash Generator", "Create a local cryptographic hash from text.", "local"),
     ("17", "Console Appearance", "Customize terminal colors, borders, titles, and wings.", "local"),
     ("18", "About Cros", "Review scope, privacy boundaries, and responsible-use notes.", "local"),
+    ("19", "NameSniper", "Check public Minecraft name availability and PlayerDB profile details locally inside Cros.", "network"),
 ])
 
 CATALOG += _rows("advanced", "Web Intelligence", [

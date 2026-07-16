@@ -51,6 +51,7 @@ TOOL_SESSIONS_LOCK = threading.Lock()
 ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 # Match the stable platform + URL portion; terminal status glyph encoding varies.
 BLACKBIRD_FOUND_RE = re.compile(r"\[([^\]\r\n]{1,100})\]\s+(https?://[^\s\r\n]+)")
+EMAIL_FOUND_RE = re.compile(r"\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+\b")
 BLACKBIRD_SOCIAL_NAMES: frozenset[str] | None = None
 
 
@@ -152,6 +153,20 @@ def blackbird_social_results(output: str, username: str) -> list[dict[str, str]]
         results.append({"platform": platform, "url": url, "username": username})
         known_urls.add(url.lower())
         if len(results) >= 200:
+            break
+    return results
+
+
+def blackbird_email_results(output: str) -> list[str]:
+    """Return distinct email-shaped strings shown by live engine output."""
+    results = []
+    seen = set()
+    for match in EMAIL_FOUND_RE.finditer(output):
+        value = match.group(0).strip(".,;:[](){}<>\"").lower()
+        if value not in seen and len(value) <= 254:
+            seen.add(value)
+            results.append(value)
+        if len(results) >= 100:
             break
     return results
 
@@ -698,12 +713,13 @@ def tool_session_payload(session_id: str, offset: int = 0) -> dict:
         full_output = session["output"]
         username = session.get("username", "")
     social_results = blackbird_social_results(full_output, username)
+    email_results = blackbird_email_results(full_output)
     if int(offset) < base_offset:
         output = "[Earlier output was trimmed]\n" + output
     return {"id": session_id, "output": output, "next_offset": next_offset, "done": done,
             "returncode": returncode, "elapsed_ms": int(elapsed * 1000),
             "stage": (("Complete" if returncode == 0 else "Stopped with an error") if done else stage)[:180],
-            "social_results": social_results}
+            "social_results": social_results, "email_results": email_results}
 
 
 def send_tool_session_input(session_id: str, value: object) -> None:
@@ -807,6 +823,33 @@ def open_local_app(url: str) -> None:
         except OSError:
             pass
     webbrowser.open(url)
+
+
+def install_desktop_shortcut() -> None:
+    """Create a local Windows shortcut without sending the path anywhere."""
+    if os.name != "nt":
+        raise OSError("Desktop shortcuts are supported on Windows only")
+    desktop = Path.home() / "Desktop"
+    desktop.mkdir(parents=True, exist_ok=True)
+    shortcut = desktop / "Cros Intelligence Center.lnk"
+    launcher = APP_DIR / "start_osint_tool.bat"
+    if not launcher.is_file():
+        raise OSError("The Cros launcher is missing")
+    def ps_quote(value: Path) -> str:
+        return str(value).replace("'", "''")
+    script = (
+        "$shell=New-Object -ComObject WScript.Shell;"
+        f"$shortcut=$shell.CreateShortcut('{ps_quote(shortcut)}');"
+        "$shortcut.TargetPath='cmd.exe';"
+        f"$shortcut.Arguments='/c ""{ps_quote(launcher)}""';"
+        f"$shortcut.WorkingDirectory='{ps_quote(APP_DIR)}';"
+        f"$shortcut.IconLocation='{ps_quote(APP_ICON_FILE)},0';"
+        "$shortcut.Description='Cros Intelligence Center';$shortcut.Save()"
+    )
+    result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+                            capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if result.returncode:
+        raise OSError("Windows could not create the desktop shortcut")
 
 
 class CrosServer(ThreadingHTTPServer):
@@ -983,6 +1026,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response(write_workspace_state(body))
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 500)
+            return
+        if route == "/api/install-desktop":
+            try:
+                install_desktop_shortcut()
+                self.json_response({"ok": True})
+            except OSError as exc:
+                self.json_response({"error": str(exc)}, 400)
             return
         if route == "/api/appearance":
             try:

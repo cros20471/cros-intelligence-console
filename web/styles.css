@@ -833,3 +833,12 @@ body.no-animations *, body.no-animations *::before, body.no-animations *::after 
   body.rail-collapsed .topbar { width:64px !important; height:64px !important; min-width:0; margin:0; padding:0 !important; display:block !important; }
   body.rail-collapsed .brand { position:absolute; left:10px; top:10px; width:42px !important; height:42px !important; margin:0 !important; padding:0 !important; }
 }
+/* Local operator welcome panel */
+.welcome-layer { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 24px; background: rgba(5, 7, 16, .78); backdrop-filter: blur(14px); }
+.welcome-layer[hidden] { display: none; }
+.welcome-panel { width: min(500px, 100%); padding: 32px; border: 1px solid var(--line, rgba(150,130,255,.35)); border-radius: 24px; background: var(--panel, #10121e); box-shadow: 0 24px 80px rgba(0,0,0,.45); }
+.welcome-panel h2 { margin: 12px 0 8px; font-size: clamp(26px, 5vw, 42px); }
+.welcome-panel p { color: var(--muted, #a6a6ba); line-height: 1.6; margin-bottom: 22px; }
+.welcome-panel label { display: block; color: var(--muted, #a6a6ba); font-size: 11px; letter-spacing: .16em; margin-bottom: 8px; }
+.welcome-panel input { width: 100%; margin-bottom: 14px; }
+.welcome-panel .primary-button { width: 100%; justify-content: center; }
