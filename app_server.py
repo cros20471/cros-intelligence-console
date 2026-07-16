@@ -829,7 +829,8 @@ def install_desktop_shortcut() -> None:
     """Create a local Windows shortcut without sending the path anywhere."""
     if os.name != "nt":
         raise OSError("Desktop shortcuts are supported on Windows only")
-    desktop = Path.home() / "Desktop"
+    one_drive_desktop = Path(os.environ.get("OneDrive", "")) / "Desktop"
+    desktop = one_drive_desktop if one_drive_desktop.is_dir() else Path.home() / "Desktop"
     desktop.mkdir(parents=True, exist_ok=True)
     shortcut = desktop / "Cros Intelligence Center.lnk"
     launcher = APP_DIR / "start_osint_tool.bat"
@@ -840,8 +841,7 @@ def install_desktop_shortcut() -> None:
     script = (
         "$shell=New-Object -ComObject WScript.Shell;"
         f"$shortcut=$shell.CreateShortcut('{ps_quote(shortcut)}');"
-        "$shortcut.TargetPath='cmd.exe';"
-        f"$shortcut.Arguments='/c \"\"{ps_quote(launcher)}\"\"';"
+        f"$shortcut.TargetPath='{ps_quote(launcher)}';"
         f"$shortcut.WorkingDirectory='{ps_quote(APP_DIR)}';"
         f"$shortcut.IconLocation='{ps_quote(APP_ICON_FILE)},0';"
         "$shortcut.Description='Cros Intelligence Center';$shortcut.Save()"

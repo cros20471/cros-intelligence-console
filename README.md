@@ -66,6 +66,18 @@ Start-Process -FilePath (Join-Path $repo "start_osint_tool.bat") -WorkingDirecto
 
 If `python` is not recognized, try `py -3 -m pip install -r requirements.txt` instead. If `git` is not recognized, close and reopen PowerShell after installing Git.
 
+### Update an existing installation
+
+Close Cros first, open **PowerShell** (the prompt must start with `PS`, not `>>>`), and paste this block:
+
+```powershell
+$repo = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "cros-intelligence-console"
+if (-not (Test-Path (Join-Path $repo "update_cros.ps1"))) { throw "Cros was not found at $repo. Change `$repo to your actual Cros folder." }
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo "update_cros.ps1")
+```
+
+The updater pulls the newest GitHub version, installs the matching Cros and Blackbird dependencies, then starts the updated local app. It does not upload your saved notes, map, appearance, or operator name.
+
 `install_desktop_launcher.bat` creates a Windows desktop shortcut for Cros. `start_terminal_tool.bat` remains available only for users who deliberately prefer the original text menu.
 
 New here? Follow the small [Quick Start Tutorial](QUICKSTART.md) to install Cros, pin a tool, add a note, and safely run your first workflow.
