@@ -50,7 +50,9 @@ if (-not $git) { throw "Git installation did not finish. Close and reopen PowerS
 if (-not $pythonSpec) { throw "Python is installed but Cros could not find a usable executable. Install Python from python.org with Add Python to PATH enabled, then reopen PowerShell." }
 $here = (Get-Location).Path
 $documents = [Environment]::GetFolderPath("MyDocuments")
-$repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here "start_osint_tool.bat"))) { $here } else { Join-Path $documents "cros-intelligence-console" }
+$oneDriveDocuments = Join-Path $HOME "OneDrive\Documents"
+$installRoot = if (Test-Path $oneDriveDocuments) { $oneDriveDocuments } else { $documents }
+$repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here "start_osint_tool.bat"))) { $here } else { Join-Path $installRoot "cros-intelligence-console" }
 if (Test-Path (Join-Path $repo ".git")) { git -C $repo pull --ff-only } elseif (-not (Test-Path (Join-Path $repo "start_osint_tool.bat"))) { git clone $url $repo }
 Set-Location $repo
 $pythonExe = $pythonSpec.Command; $pythonArgs = @($pythonSpec.Args)
@@ -64,7 +66,7 @@ $tag = (& $pythonExe @pythonArgs -c "import sys; print(sys.implementation.cache_
 Start-Process -FilePath (Join-Path $repo "start_osint_tool.bat") -WorkingDirectory $repo
 ```
 
-If `python` is not recognized, try `py -3 -m pip install -r requirements.txt` instead. If `git` is not recognized, close and reopen PowerShell after installing Git.
+This block is for a first-time install. If you downloaded a ZIP, use this block instead of the updater because ZIP folders do not contain Git history. If `python` is not recognized, try `py -3 -m pip install -r requirements.txt` instead. If `git` is not recognized, close and reopen PowerShell after installing Git.
 
 ### Update an existing installation
 

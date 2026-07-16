@@ -1,6 +1,17 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
-if (-not (Test-Path (Join-Path $PSScriptRoot ".git"))) { throw "This folder is not a Git checkout." }
+if (-not (Test-Path (Join-Path $PSScriptRoot ".git"))) {
+  throw "This is not a Git checkout. First clone Cros with: git clone https://github.com/cros20471/cros-intelligence-console.git"
+}
+$gitCommand = Get-Command git -ErrorAction SilentlyContinue
+$gitExe = if ($gitCommand) { $gitCommand.Source } else {
+  @(
+    (Join-Path $env:ProgramFiles "Git\cmd\git.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Git\cmd\git.exe"),
+    (Join-Path $env:LOCALAPPDATA "Programs\Git\cmd\git.exe")
+  ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+}
+if (-not $gitExe) { throw "Git is installed but was not found. Install Git from https://git-scm.com/download/win, reopen PowerShell, and run the updater again." }
 
 # Release locked Python extensions before Git/pip replace the engine runtime.
 $crosProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
@@ -10,10 +21,10 @@ foreach ($process in $crosProcesses) {
   try { Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction SilentlyContinue } catch {}
 }
 Start-Sleep -Milliseconds 800
-$beforeCommit = (& git rev-parse HEAD).Trim()
-git pull --ff-only
+$beforeCommit = (& $gitExe rev-parse HEAD).Trim()
+& $gitExe pull --ff-only
 if ($LASTEXITCODE -ne 0) { throw "Git could not update Cros. Close Git operations and run the updater again." }
-$afterCommit = (& git rev-parse HEAD).Trim()
+$afterCommit = (& $gitExe rev-parse HEAD).Trim()
 if ($beforeCommit -ne $afterCommit -and $env:CROS_UPDATER_REEXEC -ne "1") {
   $env:CROS_UPDATER_REEXEC = "1"
   $child = Start-Process -FilePath "powershell.exe" -ArgumentList @(
@@ -50,8 +61,8 @@ $pythonArgs = @($pythonSpec.Args)
 & $pythonExe @pythonArgs -m pip install --disable-pip-version-check -r (Join-Path $PSScriptRoot "requirements.txt")
 
 $engine = Join-Path $PSScriptRoot "blackbird"
-if (Test-Path (Join-Path $engine ".git")) { git -C $engine pull --ff-only }
-elseif (-not (Test-Path (Join-Path $engine "blackbird.py"))) { git clone "https://github.com/p1ngul1n0/blackbird.git" $engine }
+if (Test-Path (Join-Path $engine ".git")) { & $gitExe -C $engine pull --ff-only }
+elseif (-not (Test-Path (Join-Path $engine "blackbird.py"))) { & $gitExe clone "https://github.com/p1ngul1n0/blackbird.git" $engine }
 if (-not (Test-Path (Join-Path $engine "blackbird.py"))) { throw "Blackbird was not downloaded." }
 $engineRequirements = Join-Path $engine "requirements.txt"
 if (-not (Test-Path $engineRequirements)) { throw "Blackbird requirements.txt is missing." }
