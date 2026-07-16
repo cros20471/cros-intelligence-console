@@ -108,6 +108,7 @@ def blackbird_social_names() -> frozenset[str]:
 def blackbird_social_results(output: str, username: str) -> list[dict[str, str]]:
     if not username:
         return []
+    known_social_names = blackbird_social_names()
     results = []
     seen = set()
     for match in BLACKBIRD_FOUND_RE.finditer(output):
@@ -117,10 +118,13 @@ def blackbird_social_results(output: str, username: str) -> list[dict[str, str]]
             parsed = urllib.parse.urlsplit(url)
         except ValueError:
             continue
-        # Blackbird's site data changes independently of Cros. Do not require
-        # a platform to exist in the bundled social-name cache: new/renamed
-        # sites such as Roblox must still receive the in-app map action.
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            continue
+        # Prefer Blackbird's current site catalog so generic URLs (for
+        # example GitHub or a documentation page) do not become social leads.
+        # If the catalog is unavailable, keep the live labeled result rather
+        # than making the whole in-app account search appear empty.
+        if known_social_names and platform.lower() not in known_social_names:
             continue
         key = (platform.lower(), url.lower())
         if key in seen:
@@ -143,6 +147,8 @@ def blackbird_social_results(output: str, username: str) -> list[dict[str, str]]
             continue
         host_parts = parsed.hostname.lower().split(".")
         platform = host_parts[-2].replace("-", " ").title() if len(host_parts) >= 2 else parsed.hostname
+        if known_social_names and platform.lower() not in known_social_names:
+            continue
         results.append({"platform": platform, "url": url, "username": username})
         known_urls.add(url.lower())
         if len(results) >= 200:
