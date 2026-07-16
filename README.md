@@ -21,22 +21,26 @@ $url = "https://github.com/cros20471/cros-intelligence-console.git"
 $git = Get-Command git -ErrorAction SilentlyContinue
 $py = Get-Command py -ErrorAction SilentlyContinue
 $python = Get-Command python -ErrorAction SilentlyContinue
-if ((-not $git) -or (-not ($py -or $python))) {
+function Test-PythonCommand($command, [string[]]$arguments) { if (-not $command) { return $false }; & $command @arguments -c "import sys; print(sys.executable)" *> $null; return ($LASTEXITCODE -eq 0) }
+$pyWorks = Test-PythonCommand $py @("-3")
+$pythonWorks = Test-PythonCommand $python @()
+if ((-not $git) -or (-not ($pyWorks -or $pythonWorks))) {
   if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "Git/Python are missing and winget is unavailable. Install Git from https://git-scm.com/download/win and Python from https://www.python.org/downloads/windows/, then reopen PowerShell." }
   if (-not $git) { winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements }
-  if (-not ($py -or $python)) { winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements }
+  if (-not ($pyWorks -or $pythonWorks)) { winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements }
   $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
   $git = Get-Command git -ErrorAction SilentlyContinue; $py = Get-Command py -ErrorAction SilentlyContinue; $python = Get-Command python -ErrorAction SilentlyContinue
+  $pyWorks = Test-PythonCommand $py @("-3"); $pythonWorks = Test-PythonCommand $python @()
 }
 if (-not $git) { throw "Git installation did not finish. Close and reopen PowerShell, then paste this block again." }
-if (-not ($py -or $python)) { throw "Python installation did not finish. Close and reopen PowerShell, then paste this block again." }
+if (-not ($pyWorks -or $pythonWorks)) { throw "Python installation did not finish. Close and reopen PowerShell, then paste this block again. Do not use the Microsoft Store app alias." }
 $here = (Get-Location).Path
 $documents = [Environment]::GetFolderPath("MyDocuments")
 $repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here "start_osint_tool.bat"))) { $here } else { Join-Path $documents "cros-intelligence-console" }
 if (Test-Path (Join-Path $repo ".git")) { git -C $repo pull --ff-only } elseif (-not (Test-Path (Join-Path $repo "start_osint_tool.bat"))) { git clone $url $repo }
 Set-Location $repo
-if ($py) { py -3 --version; if ($LASTEXITCODE -ne 0) { throw "Python 3 could not be started. Reinstall Python and enable its launcher/PATH option." }; py -3 -m pip install -r requirements.txt } else { python --version; if ($LASTEXITCODE -ne 0) { throw "Python could not be started. Reinstall Python and enable Add Python to PATH." }; python -m pip install -r requirements.txt }
-$pythonExe = if ($py) { "py" } else { "python" }; $pythonArgs = if ($py) { @("-3") } else { @() }
+$pythonExe = if ($pyWorks) { "py" } else { "python" }; $pythonArgs = if ($pyWorks) { @("-3") } else { @() }
+& $pythonExe @pythonArgs -c "import sys; print('Python', sys.version.split()[0], 'from', sys.executable)"; if ($LASTEXITCODE -ne 0) { throw "Python could not be started. Install Python from python.org and enable the launcher/PATH option." }; & $pythonExe @pythonArgs -m pip install -r requirements.txt
 $engine = Join-Path $repo "blackbird"
 if (Test-Path (Join-Path $engine ".git")) { git -C $engine pull --ff-only } elseif (-not (Test-Path (Join-Path $engine "blackbird.py"))) { git clone "https://github.com/p1ngul1n0/blackbird.git" $engine }
 if (-not (Test-Path (Join-Path $engine "blackbird.py"))) { throw "Blackbird was not downloaded. Check Git and your internet connection, then run the block again." }
