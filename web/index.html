@@ -51,6 +51,7 @@
         <p id="hero-welcome-copy">Public-source intelligence, local analysis, and defensive Windows security in one focused workspace. Nothing is uploaded unless a tool clearly tells you first.</p>
         <div class="hero-meta">
           <span><b id="tool-count-hero">92</b> TOOLS INDEXED</span>
+          <span><b>600+</b> BLACKBIRD PUBLIC CHECKS</span>
           <span><b>127.0.0.1</b> LOCAL BIND</span>
           <span><b>READ-ONLY</b> BY DEFAULT</span>
         </div>
@@ -162,10 +163,10 @@
       </div>
       <div class="workbench-grid">
         <article class="workbench-panel name-lab">
-          <div class="lab-head"><span>01 / BLACKBIRD USERNAME SEARCH</span><h3>Find verified public results</h3><p>Run the installed Blackbird engine inside Cros. Results come from live source checks—not guessed profile links.</p></div>
+          <div class="lab-head"><span id="name-provider-kicker">01 / BLACKBIRD USERNAME SEARCH</span><h3>Find verified public results</h3><p id="name-provider-description">Run the installed Blackbird engine inside Cros. Results come from live source checks—not guessed profile links.</p><div class="provider-stats" id="name-provider-stats"><b>600+</b><span>public site checks</span><i></i><b>LIVE</b><span>verified responses</span></div></div>
           <form id="name-search-form" autocomplete="off">
             <label><span>USERNAME</span><input id="name-search-query" maxlength="64" pattern="[A-Za-z0-9_.-]{1,64}" placeholder="public handle" required></label>
-            <button class="primary-button" type="submit">RUN BLACKBIRD <span>→</span></button>
+            <button class="primary-button" type="submit">RUN SELECTED SEARCH <span>→</span></button>
           </form>
           <div class="lab-loading" id="name-search-loading" hidden>STARTING BLACKBIRD…</div>
           <div class="name-results" id="name-results" aria-live="polite"><div class="lab-empty"><strong>Live results only</strong><span>Blackbird must be installed in the Cros folder. The search runs inside this panel.</span></div></div>
@@ -179,6 +180,11 @@
           </form>
           <div class="lab-loading" id="image-scan-loading" hidden>ANALYZING LOCALLY…</div>
           <div class="image-results" id="image-results" aria-live="polite"><div class="lab-empty"><strong>No image selected</strong><span>The file is analyzed locally and deleted from temporary storage immediately.</span></div></div>
+        </article>
+        <article class="workbench-panel file-scan-lab legacy-file-scan" hidden>
+          <div class="lab-head"><span>04 / DEFENSIVE FILE TRIAGE</span><h3>RAT &amp; malware file scan</h3><p>Drop a file for a local SHA-256 hash, basic risk flags, and a hidden Microsoft Defender scan. Files are deleted after analysis.</p></div>
+          <form id="file-scan-form"><label class="file-drop" id="file-drop"><input id="file-scan-file" type="file"><strong>Drop a file here</strong><span>or choose one · 25 MB maximum · local only</span></label><button class="primary-button" type="submit">SCAN FILE LOCALLY <span>→</span></button></form>
+          <div class="file-scan-results" id="file-scan-results"><div class="lab-empty"><strong>No file scanned</strong><span>Use a copy of the file when possible. Never execute an unknown sample.</span></div></div>
         </article>
         <article class="workbench-panel location-lab">
           <div class="lab-head"><span>03 / LOCATION RESEARCH</span><h3>Place clue assistant</h3><p>Rank public-place hypotheses from clues you provide. Results are estimates, not exact address identification.</p></div>
@@ -223,11 +229,16 @@
       </div>
     </section>
 
+      <article class="workbench-panel file-scan-lab security-file-scan">
+        <div class="lab-head"><span>DEFENSIVE FILE TRIAGE</span><h3>RAT &amp; malware file scan</h3><p>Drop a file for a local SHA-256 hash, JAR inspection, and a hidden Microsoft Defender scan. Files are deleted after analysis.</p></div>
+        <form id="file-scan-form"><label class="file-drop" id="file-drop"><input id="file-scan-file" type="file"><strong>Drop a file here</strong><span id="file-scan-label">or choose one · 25 MB maximum · local only</span></label><button class="primary-button" type="submit">SCAN FILE LOCALLY <span>→</span></button></form>
+        <div class="file-scan-results" id="file-scan-results"><div class="lab-empty"><strong>No file scanned</strong><span>Use a copy of the file when possible. Never execute an unknown sample.</span></div></div>
+      </article>
     <section class="tools-section" id="tools" aria-labelledby="tools-title">
       <div class="section-heading">
         <div><span class="section-index">02</span><h2 id="tools-title">Tool index</h2><p>Every workflow is one launch away. Use only on systems and data you are authorized to inspect.</p></div>
         <div class="tool-controls">
-          <button class="outline-button" id="terminal-button">ALL TOOLS IN APP</button>
+          <button class="outline-button" id="terminal-button">ADVANCED TERMINAL MODE</button>
           <button class="outline-button" id="guide-button">LEARNING CENTER</button>
         </div>
       </div>
@@ -245,6 +256,11 @@
         <span class="result-count" id="result-count">LOADING INDEX</span>
       </div>
       <div id="tool-groups" class="tool-groups" aria-live="polite"></div>
+      <article class="workbench-panel file-scan-lab security-file-scan tool-index-scanner">
+        <div class="lab-head"><span>SECURITY TOOL · DEFENDER FILE SCAN</span><h3>RAT &amp; malware file scan</h3><p>Local hash, JAR inspection, and hidden Microsoft Defender scan.</p></div>
+        <form id="file-scan-form"><label class="file-drop" id="file-drop"><input id="file-scan-file" type="file"><strong>Drop a file here</strong><span id="file-scan-label">or choose one · 25 MB maximum · local only</span></label><button class="primary-button" type="submit">SCAN LOCALLY <span>→</span></button></form>
+        <div class="file-scan-results" id="file-scan-results"><div class="lab-empty"><strong>No file scanned</strong><span>Never execute an unknown sample.</span></div></div>
+      </article>
     </section>
 
     <section class="learning-section" id="learning" aria-labelledby="learning-title">
@@ -308,9 +324,10 @@
     </nav>
     <div class="workspace-dock-content" id="workspace-dock-content">
       <section class="tool-session-panel" id="tool-session-panel" data-workspace-panel="session" hidden aria-labelledby="session-title">
-        <header class="session-head"><div><span>RUNNING INSIDE CROS</span><h3 id="session-title">Tool session</h3></div><strong id="session-status">READY</strong></header>
+        <header class="session-head"><div><span>RUNNING INSIDE CROS</span><h3 id="session-title">Tool session</h3></div><div class="session-head-actions"><button type="button" class="text-button" id="session-advanced-toggle">ADVANCED</button><strong id="session-status">READY</strong></div></header>
         <div class="session-progress" id="session-progress" role="progressbar" aria-label="Tool progress" aria-valuetext="Ready"><i></i><b></b></div>
         <div class="session-meta"><span id="session-stage">Choose any tool to start</span><span id="session-time">0.0s</span></div>
+        <section class="native-tool-panel" id="native-tool-panel" hidden></section>
         <section class="session-socials" id="session-socials" hidden aria-labelledby="session-socials-title">
           <header><div><span>BLACKBIRD LIVE RETURNS</span><h4 id="session-socials-title">Found social accounts</h4></div><button type="button" id="session-view-map">VIEW MAP</button></header>
           <div id="session-social-list"></div>
@@ -321,8 +338,8 @@
           <div id="session-email-list"></div>
           <small>These addresses appeared in live tool output. Cros does not save them beyond this local session.</small>
         </section>
-        <details class="session-log"><summary>LIVE ENGINE LOG</summary><pre class="session-output" id="session-output" aria-live="polite">Tool output will appear here in real time.</pre></details>
-        <form class="session-input-form" id="session-input-form" autocomplete="off">
+        <details class="session-log" id="session-log" hidden><summary>LIVE ENGINE LOG</summary><pre class="session-output" id="session-output" aria-live="polite">Tool output will appear here in real time.</pre></details>
+        <form class="session-input-form" id="session-input-form" autocomplete="off" hidden>
           <label><span>REPLY TO TOOL</span><input id="session-input" placeholder="Type an answer when the tool asks" maxlength="4096"></label>
           <button type="submit" class="primary-button">SEND</button>
           <button type="button" class="outline-button" id="session-stop">STOP</button>
@@ -346,12 +363,13 @@
     </section>
   </div>
 
-  <aside class="settings-drawer" id="settings-drawer" aria-label="Appearance settings" aria-hidden="true">
-    <div class="drawer-head"><div><span>INTERFACE</span><h2>Appearance</h2></div><button class="icon-button" id="settings-close" aria-label="Close settings">×</button></div>
-    <div class="drawer-section"><label>INTERFACE COLOR</label><div class="swatches"><button data-accent="violet" class="active" aria-label="Violet"></button><button data-accent="cyan" aria-label="Cyan"></button><button data-accent="red" aria-label="Red"></button><button data-accent="green" aria-label="Green"></button><button data-accent="amber" aria-label="Amber"></button><button data-accent="ice" aria-label="Ice"></button></div><label class="custom-color">CUSTOM COLOR <input id="custom-accent" type="color" value="#8566ff" aria-label="Choose custom interface color"></label></div>
+  <aside class="settings-drawer" id="settings-drawer" aria-label="Appearance settings" aria-hidden="true" hidden>
+    <div class="settings-close-bar"><button class="icon-button" id="settings-close" aria-label="Close settings">×</button></div>
+    <div class="drawer-head"><div><span>INTERFACE</span><h2>Appearance</h2></div></div>
+    <section class="drawer-section color-settings"><div class="settings-section-title"><span>COLOR SYSTEM</span><small>Customize the console palette in one place.</small></div><label>INTERFACE COLOR</label><div class="swatches"><button data-accent="violet" class="active" aria-label="Violet"></button><button data-accent="cyan" aria-label="Cyan"></button><button data-accent="red" aria-label="Red"></button><button data-accent="green" aria-label="Green"></button><button data-accent="amber" aria-label="Amber"></button><button data-accent="ice" aria-label="Ice"></button></div><label class="custom-color">CUSTOM ACCENT <input id="custom-accent" type="color" value="#8566ff" aria-label="Choose custom interface color"></label><label class="color-field" for="custom-background"><span>BACKGROUND</span><input id="custom-background" type="color" value="#090b14" aria-label="Choose background color"></label><label class="color-field" for="custom-stars"><span>STARS &amp; POINTER LIGHT</span><input id="custom-stars" type="color" value="#9ca9ff" aria-label="Choose star color"></label></section>
     <div class="drawer-section"><label for="settings-operator-name">OPERATOR NAME</label><small>Stored locally and used in your welcome label.</small><input id="settings-operator-name" type="text" maxlength="40" placeholder="Your name" autocomplete="name"></div>
-    <div class="drawer-section"><label for="custom-background">BACKGROUND COLOR</label><small>Choose the base tone behind the console.</small><input id="custom-background" type="color" value="#090b14" aria-label="Choose background color"></div>
-    <div class="drawer-section"><label for="custom-stars">STAR COLOR</label><small>Choose the color used by the ambient stars and pointer trails.</small><input id="custom-stars" type="color" value="#9ca9ff" aria-label="Choose star color"></div>
+    <div class="drawer-section provider-settings"><label>NAME SEARCH PROVIDER</label><small>Blackbird is the built-in local username engine. Results come from its public-source checks and no API key is required.</small><div class="provider-plan"><div><b>BLACKBIRD · LOCAL</b><small>600+ public site checks with verified responses inside Cros.</small></div><span>ACTIVE</span></div></div>
+    <div class="drawer-section api-sources"><div class="settings-section-title"><span>API SOURCES</span><small>Official key pages for optional defensive connectors. Never share keys in GitHub or chat.</small></div><div class="api-source-list"><a class="api-source" href="https://haveibeenpwned.com/API/Key" target="_blank" rel="noreferrer"><span><b>Have I Been Pwned</b><small>Breach notifications · paid API</small></span><em>GET KEY ↗</em></a><a class="api-source" href="https://www.virustotal.com/gui/my-apikey" target="_blank" rel="noreferrer"><span><b>VirusTotal</b><small>Free public API quota · premium plans available</small></span><em>GET KEY ↗</em></a><a class="api-source" href="https://www.abuseipdb.com/account/api" target="_blank" rel="noreferrer"><span><b>AbuseIPDB</b><small>Free quota · IP reputation checks</small></span><em>GET KEY ↗</em></a><a class="api-source" href="https://urlscan.io/user/" target="_blank" rel="noreferrer"><span><b>urlscan.io</b><small>Free quota · URL and page analysis</small></span><em>GET KEY ↗</em></a></div></div>
     <div class="drawer-section setting-row"><div><label>PARTICLE FIELD</label><small>Animated local signal map</small></div><button class="toggle active" id="particle-toggle" aria-pressed="true"><i></i></button></div>
     <div class="drawer-section setting-row"><div><label>ANIMATED WINGS</label><small>Reactive centerpiece wings</small></div><button class="toggle active" id="wing-toggle" aria-pressed="true"><i></i></button></div>
     <div class="drawer-section setting-row"><div><label>COMPACT CARDS</label><small>Fit more tools on screen</small></div><button class="toggle" id="compact-toggle" aria-pressed="false"><i></i></button></div>

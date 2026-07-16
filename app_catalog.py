@@ -96,7 +96,7 @@ CATALOG += _rows("security", "System Defense", [
 
 CATALOG += _rows("security", "File Defense", [
     ("9", "Static File Scan", "Inspect hash, entropy, signature, header, and review strings.", "local"),
-    ("10", "Defender File Scan", "Ask Defender to scan one chosen file or folder.", "confirm"),
+    ("10", "RAT & Malware File Scan", "Scan a file or JAR locally with Defender and defensive static indicators.", "local"),
     ("11", "Hash Reputation", "Calculate SHA-256 locally and optionally open reputation research.", "browser"),
     ("12", "Integrity Baseline", "Create a known-good SHA-256 folder baseline.", "local"),
     ("13", "Integrity Compare", "Report added, modified, and missing files against a baseline.", "local"),

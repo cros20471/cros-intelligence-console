@@ -15,6 +15,7 @@ blackbird/
 learning_progress.json
 workspace_state.json
 settings.json
+local_key_vault.json
 .env
 .env.*
 *.pem

@@ -6,22 +6,29 @@ import concurrent.futures
 import base64
 import binascii
 import codecs
+import ctypes
+import hashlib
 import json
 import mimetypes
 import os
 import platform
 import re
 import secrets
+import shutil
+import ssl
 import struct
 import subprocess
 import sys
 import threading
 import time
 import tempfile
+import urllib.error
 import urllib.parse
+import urllib.request
 import uuid
 import webbrowser
 import zlib
+import zipfile
 from collections import Counter
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -43,6 +50,17 @@ WORKSPACE_STATE_FILE = APP_DIR / "workspace_state.json"
 WORKSPACE_STATE_LOCK = threading.Lock()
 APPEARANCE_STATE_FILE = APP_DIR / "appearance_state.json"
 APPEARANCE_STATE_LOCK = threading.Lock()
+KEY_VAULT_FILE = APP_DIR / "local_key_vault.json"
+KEY_VAULT_LOCK = threading.Lock()
+# OSINT Dog's edge currently rejects the default Python 3.14 cipher offer on
+# some Windows installations. Keep certificate verification enabled while
+# allowing a compatible TLS 1.2 cipher set for this provider only.
+OSINT_DOG_SSL_CONTEXT = ssl.create_default_context()
+OSINT_DOG_SSL_CONTEXT.minimum_version = ssl.TLSVersion.TLSv1_2
+try:
+    OSINT_DOG_SSL_CONTEXT.set_ciphers("DEFAULT:@SECLEVEL=1")
+except ssl.SSLError:
+    pass
 APP_ICON_FILE = WEB_DIR / "cros.ico"
 APP_LOGO_FILE = WEB_DIR / "cros-logo.png"
 APP_ICON_HANDLES: list[int] = []
@@ -316,13 +334,75 @@ def write_appearance_state(value: object) -> dict[str, str]:
     return cleaned
 
 
+class _DataBlob(ctypes.Structure):
+    _fields_ = [("cbData", ctypes.c_uint32), ("pbData", ctypes.POINTER(ctypes.c_ubyte))]
+
+
+def protect_local_key(value: str) -> str:
+    raw = value.encode("utf-8")
+    buffer = ctypes.create_string_buffer(raw)
+    source = _DataBlob(len(raw), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)))
+    protected = _DataBlob()
+    if os.name != "nt" or not ctypes.windll.crypt32.CryptProtectData(ctypes.byref(source), "Cros local API key", None, None, None, 0, ctypes.byref(protected)):
+        raise OSError("Windows could not protect the local API key")
+    try:
+        return base64.b64encode(ctypes.string_at(protected.pbData, protected.cbData)).decode("ascii")
+    finally:
+        ctypes.windll.kernel32.LocalFree(protected.pbData)
+
+
+def unprotect_local_key(value: str) -> str:
+    try:
+        raw = base64.b64decode(str(value).strip().encode("ascii"), validate=True)
+    except (UnicodeEncodeError, ValueError, binascii.Error) as exc:
+        raise OSError("The saved local key is not valid encrypted data") from exc
+    buffer = ctypes.create_string_buffer(raw)
+    source = _DataBlob(len(raw), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)))
+    plain = _DataBlob()
+    if os.name != "nt" or not ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(source), None, None, None, None, 0, ctypes.byref(plain)):
+        raise OSError("Windows could not unlock the local API key")
+    try:
+        return ctypes.string_at(plain.pbData, plain.cbData).decode("utf-8")
+    finally:
+        ctypes.windll.kernel32.LocalFree(plain.pbData)
+
+
+def read_provider_keys() -> dict[str, str]:
+    try:
+        saved = json.loads(KEY_VAULT_FILE.read_text(encoding="utf-8"))
+        return {name: unprotect_local_key(str(value)) for name, value in saved.items() if name in {"osintdog"} and value}
+    except (OSError, ValueError, json.JSONDecodeError, binascii.Error, UnicodeError):
+        return {}
+
+
+def write_provider_keys(value: object) -> dict[str, bool]:
+    incoming = value if isinstance(value, dict) else {}
+    keys = {name: str(incoming.get(name, "")).strip() for name in ("osintdog",) if str(incoming.get(name, "")).strip()}
+    encrypted = {name: protect_local_key(secret) for name, secret in keys.items()}
+    temporary = KEY_VAULT_FILE.with_suffix(".tmp")
+    with KEY_VAULT_LOCK:
+        temporary.write_text(json.dumps(encrypted, indent=2), encoding="utf-8")
+        os.replace(temporary, KEY_VAULT_FILE)
+    return {"osintdog": bool(keys.get("osintdog"))}
+
+
 def clear_local_data() -> None:
     """Remove only Cros-generated local state; never touch user files."""
-    for path in (WORKSPACE_STATE_FILE, APPEARANCE_STATE_FILE, LEARNING_PROGRESS_FILE, APP_DIR / "settings.json"):
+    for path in (WORKSPACE_STATE_FILE, APPEARANCE_STATE_FILE, LEARNING_PROGRESS_FILE, APP_DIR / "settings.json", KEY_VAULT_FILE):
         try:
             path.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def redact_sensitive_lookup_data(value: object) -> object:
+    """Keep provider responses useful without surfacing credential-like fields."""
+    blocked = re.compile(r"password|passwd|secret|token|api.?key|ssn|social.?security|dob|date.?of.?birth", re.I)
+    if isinstance(value, dict):
+        return {str(key): redact_sensitive_lookup_data(item) for key, item in value.items() if not blocked.search(str(key))}
+    if isinstance(value, list):
+        return [redact_sensitive_lookup_data(item) for item in value[:200]]
+    return value
 
 
 def console_python() -> str:
@@ -391,6 +471,146 @@ def analyze_uploaded_image(body: dict) -> dict:
         if temporary_path:
             try: temporary_path.unlink(missing_ok=True)
             except OSError: pass
+
+
+def scan_uploaded_file(body: dict) -> dict:
+    encoded = str(body.get("data", ""))
+    if encoded.startswith("data:"):
+        encoded = encoded.partition(",")[2]
+    if not encoded or len(encoded) > 36_000_000:
+        raise ValueError("Choose a file smaller than 25 MB")
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("The file data is invalid") from exc
+    if not data or len(data) > 25_000_000:
+        raise ValueError("Choose a file smaller than 25 MB")
+    name = Path(_short_text(body.get("name"), 160)).name or "dropped-file"
+    suffix = Path(name).suffix.lower()
+    risky_extensions = {".exe", ".dll", ".scr", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".hta", ".msi", ".jar"}
+    result = {"file_name": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+              "extension": suffix or "(none)", "review": "normal", "defender": "unavailable", "detections": [], "indicators": []}
+    if suffix in risky_extensions:
+        result["review"] = "review"
+    temporary_path = None
+    extracted_path = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="cros-file-", suffix=suffix or ".bin", delete=False) as temporary:
+            temporary.write(data)
+            temporary_path = Path(temporary.name)
+        scan_target = temporary_path
+        if suffix == ".jar":
+            extracted_path = Path(tempfile.mkdtemp(prefix="cros-jar-"))
+            with zipfile.ZipFile(temporary_path) as archive:
+                members = archive.infolist()
+                for member in members:
+                    target = (extracted_path / member.filename).resolve()
+                    if extracted_path.resolve() not in target.parents and target != extracted_path.resolve():
+                        raise ValueError("The JAR contains an unsafe archive path")
+                archive.extractall(extracted_path)
+            result["archive_inspected"] = True
+            names = [member.filename.replace("\\", "/") for member in members]
+            result["jar_summary"] = {"integrity": "valid", "entries": len(names), "classes": sum(name.endswith(".class") for name in names),
+                                      "native_libraries": sum(name.endswith((".dll", ".so", ".dylib")) for name in names),
+                                      "nested_archives": sum(name.endswith((".jar", ".zip")) for name in names),
+                                      "manifest": "META-INF/MANIFEST.MF" in names}
+            signatures = {
+                b"java/lang/runtime": "Java Runtime process execution",
+                b"java/lang/processbuilder": "Java ProcessBuilder execution",
+                b"java/net/socket": "Java socket networking",
+                b"java/net/http": "Java HTTP networking",
+                b"cmd.exe": "Windows command execution string",
+                b"powershell": "PowerShell execution string",
+                b"java/lang/reflect": "Java reflection",
+                b"getasynckeystate": "Windows async keyboard state access",
+                b"setwindowshookex": "Windows keyboard hook API",
+                b"java/awt/robot": "Java Robot input capture",
+                b"java/awt/event/keyevent": "Java keyboard event capture",
+                b"javafx/scene/input/keyevent": "JavaFX keyboard event capture",
+                b"jnativehook": "Global keyboard hook library",
+                b"clipboard": "Clipboard access",
+            }
+            checked = 0
+            for entry in extracted_path.rglob("*"):
+                if not entry.is_file() or checked >= 150:
+                    continue
+                try:
+                    blob = entry.read_bytes()[:2_000_000].lower()
+                    checked += 1
+                    for needle, label in signatures.items():
+                        if needle in blob and label not in result["indicators"]:
+                            result["indicators"].append(label)
+                except OSError:
+                    continue
+            if result["indicators"]:
+                result["review"] = "suspicious indicators"
+                indicator_text = " ".join(result["indicators"]).lower()
+                has_execution = "process execution" in indicator_text or "command execution" in indicator_text or "powershell" in indicator_text
+                has_network = "networking" in indicator_text
+                has_keylogging = "keyboard" in indicator_text or "key state" in indicator_text or "key event" in indicator_text or "keyboard hook" in indicator_text or "input capture" in indicator_text
+                result["assessment"] = "likely keylogger behavior" if has_keylogging else "likely RAT-like behavior" if has_execution and has_network else "suspicious behavior"
+            else:
+                result["assessment"] = "no RAT indicators found"
+            scan_target = extracted_path
+        if platform.system() == "Windows":
+            escaped = str(scan_target).replace("'", "''")
+            script = ("$ErrorActionPreference='Stop'; $before=Get-Date; "
+                      f"Start-MpScan -ScanPath '{escaped}' -ScanType CustomScan; "
+                      "$hits=Get-MpThreatDetection | Where-Object {$_.InitialDetectionTime -ge $before}; "
+                      "$hits | Select-Object ThreatName,Severity,Resources | ConvertTo-Json -Compress")
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            completed = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+                                       capture_output=True, text=True, timeout=90, creationflags=creationflags)
+            if completed.returncode == 0:
+                raw = completed.stdout.strip()
+                if raw:
+                    parsed = json.loads(raw)
+                    result["detections"] = parsed if isinstance(parsed, list) else [parsed]
+                result["defender"] = "threat detected" if result["detections"] else "no threat detected"
+            else:
+                result["defender"] = "scan unavailable"
+                result["defender_error"] = _short_text(completed.stderr or completed.stdout, 240)
+        return result
+    except subprocess.TimeoutExpired:
+        result["defender"] = "scan timed out"
+        return result
+    except (OSError, json.JSONDecodeError) as exc:
+        result["defender"] = "scan unavailable"
+        result["defender_error"] = _short_text(exc, 240)
+        return result
+    finally:
+        if temporary_path:
+            try: temporary_path.unlink(missing_ok=True)
+            except OSError: pass
+        if extracted_path:
+            shutil.rmtree(extracted_path, ignore_errors=True)
+
+
+def free_public_username_search(username: str) -> dict:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", username):
+        raise ValueError("Enter a valid public username.")
+    checks = [
+        ("GitHub", f"https://api.github.com/users/{urllib.parse.quote(username)}"),
+        ("GitLab", f"https://gitlab.com/api/v4/users?username={urllib.parse.quote(username)}"),
+    ]
+    results = []
+    for source, url in checks:
+        request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "Cros-Intelligence-Center/1.0"})
+        try:
+            with urllib.request.urlopen(request, timeout=12) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if source == "GitHub" and isinstance(payload, dict) and payload.get("login"):
+                results.append({"source": source, "found": True, "username": payload.get("login"), "profile": payload.get("html_url"), "public_repos": payload.get("public_repos")})
+            elif source == "GitLab" and isinstance(payload, list) and payload:
+                user = payload[0]
+                results.append({"source": source, "found": True, "username": user.get("username"), "profile": user.get("web_url")})
+            else:
+                results.append({"source": source, "found": False})
+        except urllib.error.HTTPError as exc:
+            results.append({"source": source, "found": False, "status": exc.code})
+        except (OSError, json.JSONDecodeError) as exc:
+            results.append({"source": source, "found": False, "error": type(exc).__name__})
+    return {"provider": "Free public APIs", "username": username, "results": results}
 
 
 def fallback_icon_bytes() -> bytes:
@@ -832,26 +1052,44 @@ def install_desktop_shortcut() -> None:
     """Create a local Windows shortcut without sending the path anywhere."""
     if os.name != "nt":
         raise OSError("Desktop shortcuts are supported on Windows only")
-    one_drive_desktop = Path(os.environ.get("OneDrive", "")) / "Desktop"
-    desktop = one_drive_desktop if one_drive_desktop.is_dir() else Path.home() / "Desktop"
-    desktop.mkdir(parents=True, exist_ok=True)
-    shortcut = desktop / "Cros Intelligence Center.lnk"
     launcher = APP_DIR / "start_osint_tool.bat"
     if not launcher.is_file():
         raise OSError("The Cros launcher is missing")
+    destinations = [Path.home() / "Desktop"]
+    one_drive_desktop = Path(os.environ.get("OneDrive", "")) / "Desktop"
+    if one_drive_desktop not in destinations:
+        destinations.append(one_drive_desktop)
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as key:
+            registered = os.path.expandvars(str(winreg.QueryValueEx(key, "Desktop")[0]))
+        registered_desktop = Path(registered)
+        if registered_desktop not in destinations:
+            destinations.append(registered_desktop)
+    except (ImportError, OSError):
+        pass
     def ps_quote(value: Path) -> str:
         return str(value).replace("'", "''")
-    script = (
-        "$shell=New-Object -ComObject WScript.Shell;"
-        f"$shortcut=$shell.CreateShortcut('{ps_quote(shortcut)}');"
-        f"$shortcut.TargetPath='{ps_quote(launcher)}';"
-        f"$shortcut.WorkingDirectory='{ps_quote(APP_DIR)}';"
-        f"$shortcut.IconLocation='{ps_quote(APP_ICON_FILE)},0';"
-        "$shortcut.Description='Cros Intelligence Center';$shortcut.Save()"
-    )
-    result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
-                            capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    if result.returncode:
+    created = []
+    for desktop in destinations:
+        try:
+            desktop.mkdir(parents=True, exist_ok=True)
+            shortcut = desktop / "Cros Intelligence Center - Private Dev.lnk"
+            script = (
+                "$shell=New-Object -ComObject WScript.Shell;"
+                f"$shortcut=$shell.CreateShortcut('{ps_quote(shortcut)}');"
+                f"$shortcut.TargetPath='{ps_quote(launcher)}';"
+                f"$shortcut.WorkingDirectory='{ps_quote(APP_DIR)}';"
+                f"$shortcut.IconLocation='{ps_quote(APP_ICON_FILE)},0';"
+                "$shortcut.Description='Cros Intelligence Center';$shortcut.Save()"
+            )
+            result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+                                    capture_output=True, text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if result.returncode == 0 and shortcut.is_file():
+                created.append(shortcut)
+        except (OSError, subprocess.SubprocessError):
+            continue
+    if not created:
         raise OSError("Windows could not create the desktop shortcut")
 
 
@@ -921,6 +1159,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             self.json_response(read_appearance_state())
             return
+        if route == "/api/provider-keys":
+            if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
+            self.json_response(read_provider_keys())
+            return
         if route == "/api/session":
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
@@ -974,7 +1216,7 @@ class Handler(BaseHTTPRequestHandler):
         touch()
         if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
         route = urllib.parse.urlsplit(self.path).path
-        body = self.read_json(16_500_000 if route == "/api/image-analyze" else 262_144)
+        body = self.read_json(36_500_000 if route in {"/api/image-analyze", "/api/file-scan"} else 262_144)
         if route == "/api/session/start":
             try:
                 self.json_response(start_tool_session(body.get("category", ""), body.get("id", ""),
@@ -998,6 +1240,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if route == "/api/image-analyze":
             try: self.json_response(analyze_uploaded_image(body))
+            except (OSError, RuntimeError, ValueError) as exc: self.json_response({"error": str(exc)}, 400)
+            return
+        if route == "/api/file-scan":
+            try: self.json_response(scan_uploaded_file(body))
+            except (OSError, RuntimeError, ValueError) as exc: self.json_response({"error": str(exc)}, 400)
+            return
+        if route == "/api/free-public-search":
+            try: self.json_response(free_public_username_search(str(body.get("username", "")).strip()))
             except (OSError, RuntimeError, ValueError) as exc: self.json_response({"error": str(exc)}, 400)
             return
         if route == "/api/open-url":
@@ -1043,6 +1293,12 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 500)
             return
+        if route == "/api/provider-keys":
+            try:
+                self.json_response(write_provider_keys(body))
+            except OSError as exc:
+                self.json_response({"error": str(exc)}, 500)
+            return
         if route == "/api/clear-local-data":
             try:
                 clear_local_data()
@@ -1068,6 +1324,30 @@ class Handler(BaseHTTPRequestHandler):
                 else: self.json_response({"error": f"HIBP returned HTTP {exc.code}."}, 502)
             except (OSError, json.JSONDecodeError) as exc:
                 self.json_response({"error": f"Could not reach HIBP: {exc}"}, 502)
+            return
+        if route == "/api/osintdog-search":
+            username = str(body.get("username", "")).strip()
+            api_key = str(body.get("api_key", "")).strip() or read_provider_keys().get("osintdog", "")
+            if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", username):
+                self.json_response({"error": "Enter a valid public username."}, 400); return
+            if not api_key or len(api_key) > 256:
+                self.json_response({"error": "Enter your OSINT Dog API key in Settings."}, 400); return
+            request = urllib.request.Request(
+                "https://osintdog.com/api/search",
+                data=json.dumps({"field": [{"username": username}]}).encode("utf-8"),
+                headers={"X-API-Key": api_key, "Content-Type": "application/json", "Accept": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=30, context=OSINT_DOG_SSL_CONTEXT) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                self.json_response({"ok": True, "provider": "OSINT Dog", "result": redact_sensitive_lookup_data(payload)})
+            except urllib.error.HTTPError as exc:
+                if exc.code in {401, 403}: self.json_response({"error": "OSINT Dog rejected the API key or request."}, 400)
+                elif exc.code == 429: self.json_response({"error": "OSINT Dog rate limit reached. Try again later."}, 429)
+                else: self.json_response({"error": f"OSINT Dog returned HTTP {exc.code}."}, 502)
+            except (OSError, json.JSONDecodeError) as exc:
+                self.json_response({"error": f"Could not reach OSINT Dog: {exc}"}, 502)
             return
         if route == "/api/open-pinned":
             try:

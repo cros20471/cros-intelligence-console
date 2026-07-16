@@ -60,6 +60,7 @@
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
+  function escapeHtml(value) { const node = document.createElement("span"); node.textContent = String(value ?? ""); return node.innerHTML; }
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
   async function api(path, options = {}) {
@@ -79,6 +80,12 @@
   function queueAppearanceSave() { clearTimeout(appearanceSaveTimer); appearanceSaveTimer = setTimeout(() => { api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }, 180); }
   function saveAppearanceNow() { clearTimeout(appearanceSaveTimer); api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }
   async function restoreAppearanceFromServer() { try { const saved = await api("/api/appearance"); Object.entries(saved || {}).forEach(([key, value]) => { if (APPEARANCE_KEYS.includes(key)) localStorage.setItem(key, String(value)); }); } catch (_) {} }
+  async function restoreProviderKeys() {
+    try {
+      const saved = await api("/api/provider-keys");
+      if (saved.osintdog) localStorage.setItem("cros-osintdog-key", saved.osintdog);
+    } catch (_) {}
+  }
 
   function toast(title, message, error = false) {
     const item = document.createElement("div");
@@ -312,6 +319,12 @@
       openWorkspace("research");
       toast("Opened local image investigator", "Choose a photo for local analysis.");
       closeCommand();
+      return;
+    }
+    if (tool.key === "security:10") {
+      recordRecent(tool);
+      closeCommand();
+      startToolSession("security", "10", { title: "RAT & Malware File Scan" });
       return;
     }
     if (tool.key === "advanced:20" || tool.key === "security:24") {
@@ -832,10 +845,45 @@
     }
   }
 
+  function showNativeTool(category, id) {
+    const panel = $("#native-tool-panel");
+    panel.replaceChildren(); panel.hidden = true;
+    if (category === "advanced" && String(id) === "12") {
+      panel.innerHTML = `<div class="native-tool-head"><span>LOCAL TOOL · NO TERMINAL</span><h4>Base64 encoder / decoder</h4><p>Base64 is encoding, not encryption. Choose an action, enter text, and run it locally.</p></div><div class="choice-bubbles"><button type="button" class="active" data-native-mode="encode">ENCODE</button><button type="button" data-native-mode="decode">DECODE</button></div><label class="native-field"><span>INPUT</span><textarea id="native-base64-input" placeholder="Paste text or Base64 data"></textarea></label><button type="button" class="primary-button" id="native-base64-run">RUN LOCALLY <span>→</span></button><label class="native-field"><span>RESULT</span><textarea id="native-base64-output" readonly></textarea></label>`;
+      panel.hidden = false; let mode = "encode";
+      panel.querySelectorAll("[data-native-mode]").forEach(button => button.addEventListener("click", () => { mode = button.dataset.nativeMode; panel.querySelectorAll("[data-native-mode]").forEach(item => item.classList.toggle("active", item === button)); }));
+      $("#native-base64-run").addEventListener("click", () => { try { const input = $("#native-base64-input").value; $("#native-base64-output").value = mode === "encode" ? btoa(unescape(encodeURIComponent(input))) : decodeURIComponent(escape(atob(input.replace(/\s+/g, "")))); } catch (_) { $("#native-base64-output").value = "Invalid Base64 input."; } });
+      return true;
+    }
+    if (category === "advanced" && String(id) === "4") {
+      panel.innerHTML = `<div class="native-tool-head"><span>LOCAL TOOL · NO TERMINAL</span><h4>URL parser</h4><p>Break a URL into readable parts without opening it.</p></div><label class="native-field"><span>URL</span><input id="native-url-input" placeholder="https://example.com/path?query=value"></label><button type="button" class="primary-button" id="native-url-run">PARSE LOCALLY <span>→</span></button><pre class="native-output" id="native-url-output">Enter a URL to inspect its parts.</pre>`;
+      panel.hidden = false; $("#native-url-run").addEventListener("click", () => { try { const url = new URL($("#native-url-input").value); $("#native-url-output").textContent = JSON.stringify({ scheme: url.protocol.replace(":", ""), host: url.hostname, port: url.port || "default", path: url.pathname, query: Object.fromEntries(url.searchParams.entries()), fragment: url.hash.slice(1) }, null, 2); } catch (_) { $("#native-url-output").textContent = "Enter a valid URL."; } });
+      return true;
+    }
+    if (category === "security" && String(id) === "10") {
+      panel.innerHTML = `<div class="native-tool-head"><span>SECURITY TOOL · NO TERMINAL</span><h4>RAT &amp; malware file scan</h4><p>Drop a file or JAR. Cros hashes it, inspects archive contents, and runs Microsoft Defender locally.</p></div><div class="native-file-scan file-scan-host"><form id="native-file-scan-form"><label class="file-drop" id="native-file-drop"><input id="native-file-scan-file" type="file"><strong>Drop a file here</strong><span id="native-file-scan-label">25 MB maximum · local only</span></label><button class="primary-button" type="submit">SCAN LOCALLY <span>→</span></button></form><div class="file-scan-results" id="native-file-scan-results"><div class="lab-empty"><strong>No file scanned</strong><span>Never execute an unknown sample.</span></div></div></div>`;
+      panel.hidden = false;
+      const host = panel.querySelector(".file-scan-host");
+      const form = host.querySelector("#native-file-scan-form");
+      const input = host.querySelector("#native-file-scan-file");
+      const drop = host.querySelector("#native-file-drop");
+      form.addEventListener("submit", scanDroppedFile);
+      input.addEventListener("change", event => { const selected = event.target.files[0]; drop.classList.toggle("has-file", Boolean(selected)); if (selected) { drop.querySelector("strong").textContent = "FILE DROPPED"; host.querySelector("#native-file-scan-label").textContent = `${selected.name} · ${(selected.size / 1048576).toFixed(2)} MB`; } });
+      drop.addEventListener("dragover", event => { event.preventDefault(); drop.classList.add("dragging"); });
+      drop.addEventListener("dragleave", () => drop.classList.remove("dragging"));
+      drop.addEventListener("drop", event => { event.preventDefault(); drop.classList.remove("dragging"); if (event.dataTransfer.files.length) { const transfer = new DataTransfer(); transfer.items.add(event.dataTransfer.files[0]); input.files = transfer.files; input.dispatchEvent(new Event("change")); } });
+      return true;
+    }
+    return false;
+  }
+
   async function startToolSession(category, id, options = {}) {
     await stopActiveSession(false);
     clearTimeout(state.sessionPoll);
     openWorkspace("session");
+    $("#session-log").hidden = true;
+    $("#session-input-form").hidden = true;
+    $("#session-advanced-toggle").textContent = "ADVANCED";
     $("#session-title").textContent = options.title || "Tool session";
     $("#session-output").textContent = "Starting inside Cros…";
     state.sessionId = "";
@@ -848,6 +896,7 @@
     renderSessionSocialResults();
     renderSessionEmailResults();
     updateSessionProgress({ done: false, stage: "Starting local tool", elapsed_ms: 0 });
+    if (showNativeTool(category, id)) { $("#session-status").textContent = "LOCAL"; $("#session-stage").textContent = "Ready · running inside Cros"; updateSessionProgress({ done: true, returncode: 0, stage: "Complete", elapsed_ms: 0 }); return; }
     try {
       const payload = await api("/api/session/start", {
         method: "POST",
@@ -899,6 +948,79 @@
     } finally {
       $("#name-search-loading").hidden = true;
     }
+  }
+
+  function renderPublicProviderResults(root, title, results, note = "") {
+    const block = document.createElement("section"); block.className = "provider-result provider-visible";
+    const heading = document.createElement("h4"); heading.textContent = title; block.append(heading);
+    if (note) { const copy = document.createElement("p"); copy.textContent = note; block.append(copy); }
+    (Array.isArray(results) ? results : []).forEach(item => {
+      const row = document.createElement("div"); row.className = "public-provider-row";
+      const info = document.createElement("div"); const name = document.createElement("strong"); name.textContent = item.source || "Public source"; const detail = document.createElement("span"); detail.textContent = item.found ? `@${item.username || "match"}` : "No public profile found"; info.append(name, detail); row.append(info);
+      if (item.found && item.profile) { const link = document.createElement("a"); link.href = item.profile; link.target = "_blank"; link.rel = "noreferrer"; link.textContent = "OPEN PROFILE ↗"; row.append(link); }
+      block.append(row);
+    });
+    root.append(block); root.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function searchNamesWithProviders(event) {
+    event.preventDefault();
+    const query = $("#name-search-query").value.trim();
+    if (!query) return;
+    const provider = localStorage.getItem("cros-name-provider") || "blackbird";
+    const apiKey = localStorage.getItem("cros-osintdog-key") || "";
+    const root = $("#name-results");
+    $("#name-search-loading").hidden = false;
+    try {
+      root.replaceChildren();
+      if ((provider === "osintdog" || provider === "both") && !apiKey) throw new Error("Add your OSINT Dog key in Settings first.");
+      if (provider === "blackbird" || provider === "both") {
+        const status = document.createElement("div"); status.className = "blackbird-live-note";
+        status.innerHTML = "<strong>BLACKBIRD LIVE SESSION</strong><span>Results stream in the in-app workspace. Only accounts returned by the installed engine are shown.</span>";
+        root.append(status);
+        const toolId = state.identityToolId === "2" ? "2" : "1";
+        const label = toolId === "2" ? "Blackbird variations" : "Blackbird";
+        startToolSession("osint", toolId, { username: query, title: `${label} · ${query}` });
+      }
+      if (provider === "osintdog" || provider === "both") {
+        const response = await api("/api/osintdog-search", { method: "POST", body: JSON.stringify({ username: query, api_key: apiKey }) });
+        const block = document.createElement("section"); block.className = "provider-result";
+        const heading = document.createElement("h4"); heading.textContent = "OSINT DOG API RESULT";
+        const pre = document.createElement("pre"); pre.textContent = JSON.stringify(response.result || response, null, 2);
+        block.append(heading, pre); root.append(block);
+      }
+      if (provider === "free") {
+        const response = await api("/api/free-public-search", { method: "POST", body: JSON.stringify({ username: query }) });
+        renderPublicProviderResults(root, "FREE PUBLIC API RESULTS", response.results, "Public GitHub and GitLab checks. Verify that a match belongs to the same person.");
+        toast("Results ready", "Free public profiles were checked.");
+      }
+    } catch (error) {
+      const tlsFailure = /CERTIFICATE_VERIFY_FAILED|SSLV3_ALERT_HANDSHAKE_FAILURE|certificate chain|local issuer/i.test(error.message || "");
+      if ((provider === "osintdog" || provider === "both") && tlsFailure) {
+        try {
+          const fallback = await api("/api/free-public-search", { method: "POST", body: JSON.stringify({ username: query }) });
+          root.replaceChildren();
+          renderPublicProviderResults(root, "FREE FALLBACK RESULTS", fallback.results, "OSINT Dog could not establish a trusted HTTPS connection on this PC. Showing free public GitHub and GitLab checks instead.");
+          toast("OSINT Dog unavailable", "Used free public checks instead.");
+        } catch (fallbackError) { toast("Free fallback unavailable", fallbackError.message, true); }
+      } else { toast("Name search unavailable", error.message, true); }
+    }
+    finally { $("#name-search-loading").hidden = true; }
+  }
+
+  function updateNameProviderCard(provider) {
+    const values = {
+      blackbird: { kicker: "01 / BLACKBIRD USERNAME SEARCH", description: "Run the installed Blackbird engine inside Cros. Results come from live public-site checks—not guessed profile links.", stats: ["600+", "public site checks", "LIVE", "verified responses"] },
+      free: { kicker: "01 / FREE PUBLIC API SEARCH", description: "Check public GitHub and GitLab profiles without an API key. Results are limited to what those services expose publicly.", stats: ["2", "free APIs", "NO KEY", "public profiles"] },
+      osintdog: { kicker: "01 / OSINT DOG API SEARCH", description: "Use your own OSINT Dog key for an authenticated multi-source lookup. Sensitive credential-like fields are redacted in Cros.", stats: ["15+", "intelligence sources", "BYOK", "your API key"] },
+      both: { kicker: "01 / DUAL PROVIDER SEARCH", description: "Run Blackbird public-site checks and OSINT Dog API lookup together, then compare returned evidence.", stats: ["600+", "site checks", "+15", "API sources"] },
+    }[provider] || null;
+    if (!values) return;
+    $("#name-provider-kicker").textContent = values.kicker;
+    $("#name-provider-description").textContent = values.description;
+    const stats = $("#name-provider-stats");
+    stats.replaceChildren();
+    values.stats.forEach((value, index) => { const node = document.createElement(index % 2 ? "span" : "b"); node.textContent = value; stats.append(node); if (index === 1) { const divider = document.createElement("i"); stats.append(divider); } });
   }
 
   function readFileAsBase64(file) {
@@ -1648,7 +1770,41 @@
   }
   function setCustomBackground(hex, save = true) { document.documentElement.style.setProperty("--custom-bg", hex); if (save) localStorage.setItem("cros-background", hex); }
   function setStarColor(hex, save = true) { const rgb = hexToRgb(hex); if (!rgb) return; document.documentElement.style.setProperty("--star-rgb", rgb.join(", ")); $("#custom-stars").value = hex; if (save) localStorage.setItem("cros-star-color", hex); }
-  function setSettingsOpen(open) { const drawer = $("#settings-drawer"); drawer.classList.toggle("open", open); drawer.setAttribute("aria-hidden", String(!open)); }
+  function setSettingsOpen(open) {
+    const drawer = $("#settings-drawer");
+    drawer.hidden = !open;
+    drawer.classList.toggle("open", open);
+    drawer.setAttribute("aria-hidden", String(!open));
+    document.body.classList.toggle("settings-open", open);
+  }
+
+  async function scanDroppedFile(event) {
+    event.preventDefault();
+    const scanPanel = event.currentTarget.closest(".file-scan-host") || document.querySelector("#tools .security-file-scan");
+    const file = scanPanel.querySelector("input[type=\"file\"]").files[0];
+    if (!file) { toast("Choose a file first", "Drop a file or use the file picker.", true); return; }
+    if (file.size > 25_000_000) { toast("File is too large", "Choose a file smaller than 25 MB.", true); return; }
+    const results = scanPanel.querySelector(".file-scan-results");
+    results.innerHTML = `<div class="scan-progress-card"><div class="scan-orbit"><i></i></div><strong id="scan-progress-title">Preparing local scan</strong><span id="scan-progress-detail">Creating a temporary isolated copy…</span><div class="scan-progress-track"><i></i></div></div>`;
+    const scanStages = [["Hashing file", "Calculating SHA-256 locally…"], ["Inspecting structure", file.name.toLowerCase().endsWith(".jar") ? "Opening JAR contents without executing them…" : "Checking file type and static indicators…"], ["Running Defender", "Microsoft Defender is scanning the temporary copy…"]];
+    let scanStage = 0;
+    const scanTimer = setInterval(() => { const stage = scanStages[Math.min(scanStage++, scanStages.length - 1)]; const title = scanPanel.querySelector("#scan-progress-title"); const detail = scanPanel.querySelector("#scan-progress-detail"); if (title) title.textContent = stage[0]; if (detail) detail.textContent = stage[1]; }, 700);
+    try {
+      const result = await api("/api/file-scan", { method: "POST", body: JSON.stringify({ name: file.name, data: await readFileAsBase64(file) }) });
+      const detections = Array.isArray(result.detections) ? result.detections : [];
+      const indicators = Array.isArray(result.indicators) ? result.indicators : [];
+      const flagged = detections.length || indicators.length;
+      const assessment = result.assessment || (detections.length ? "Defender detection" : "inconclusive");
+      const outcomeClass = detections.length || assessment === "likely RAT-like behavior" || assessment === "likely keylogger behavior" ? "danger" : flagged ? "review" : "safe";
+      const jar = result.jar_summary;
+      const jarRow = jar ? `<div class="jar-summary"><b>JAR STRUCTURE</b><span>${jar.integrity} · ${jar.entries} entries · ${jar.classes} classes · ${jar.native_libraries} native libraries · ${jar.nested_archives} nested archives · manifest ${jar.manifest ? "present" : "absent"}</span></div>` : "";
+      results.innerHTML = `<div class="file-scan-card ${outcomeClass}"><div class="file-scan-status ${outcomeClass}">${detections.length ? "CONFIRMED DEFENDER DETECTION" : assessment === "likely RAT-like behavior" ? "LIKELY RAT-LIKE BEHAVIOR" : assessment === "likely keylogger behavior" ? "LIKELY KEYLOGGER BEHAVIOR" : flagged ? "SUSPICIOUS INDICATORS" : "NO RAT INDICATORS FOUND"}</div><dl><dt>FILE</dt><dd>${escapeHtml(result.file_name)}</dd><dt>SHA-256</dt><dd class="hash-value">${escapeHtml(result.sha256)}</dd><dt>ASSESSMENT</dt><dd>${escapeHtml(assessment)}</dd><dt>DEFENDER</dt><dd>${escapeHtml(result.defender)}</dd><dt>REVIEW</dt><dd>${escapeHtml(result.review)}</dd></dl>${jarRow}${indicators.length ? `<div class="file-indicators"><b>LOCAL INDICATORS</b><ul>${indicators.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>` : ""}${detections.length ? `<pre>${escapeHtml(JSON.stringify(detections, null, 2))}</pre>` : "<small>Heuristics identify behavior patterns; only Defender or another confirmed signature establishes a confirmed detection.</small>"}<button type="button" class="scan-again-button">SCAN AGAIN</button></div>`;
+      results.querySelector(".scan-again-button").addEventListener("click", () => { const input = scanPanel.querySelector("input[type=\"file\"]"); const drop = scanPanel.querySelector(".file-drop"); input.value = ""; drop.classList.remove("has-file"); drop.querySelector("strong").textContent = "Drop a file here"; const label = drop.querySelector("span"); if (label) label.textContent = "25 MB maximum · local only"; results.innerHTML = "<div class=\"lab-empty\"><strong>Ready for another scan</strong><span>Drop a file or choose one to begin.</span></div>"; });
+    } catch (error) {
+      results.innerHTML = `<div class="lab-empty"><strong>Scan failed</strong><span>${escapeHtml(error.message)}</span></div>`;
+      toast("File scan failed", error.message, true);
+    } finally { clearInterval(scanTimer); }
+  }
 
   function toggleSetting(id, bodyClass, storageKey, invert = false) {
     const button = $(id);
@@ -1841,10 +1997,23 @@
     $("#cancel-node-edit").addEventListener("click", () => { $("#node-edit-form").hidden = true; });
     $("#neural-map").addEventListener("wheel", zoomGraph, { passive: false });
     $("#name-search-form").addEventListener("submit", searchNames);
+    $("#session-advanced-toggle").addEventListener("click", () => {
+      const form = $("#session-input-form");
+      const log = $("#session-log");
+      form.hidden = !form.hidden;
+      log.hidden = !log.hidden;
+      $("#session-advanced-toggle").textContent = form.hidden ? "ADVANCED" : "HIDE ADVANCED";
+    });
     $("#image-scan-form").addEventListener("submit", scanImage);
     $("#image-file").addEventListener("change", event => { $("#image-file-label").textContent = event.target.files[0]?.name || "Choose image"; });
     $("#image-scan-mode").addEventListener("change", renderImageResult);
     $("#location-form").addEventListener("submit", buildLocationHypotheses);
+    const fileScanPanel = document.querySelector("#tools .security-file-scan");
+    fileScanPanel.querySelector("#file-scan-form").addEventListener("submit", scanDroppedFile);
+    fileScanPanel.querySelector("#file-scan-file").addEventListener("change", event => { fileScanPanel.querySelector("#file-drop").classList.toggle("has-file", Boolean(event.target.files[0])); const label = fileScanPanel.querySelector("#file-scan-label"); if (label && event.target.files[0]) label.textContent = `${event.target.files[0].name} · ${(event.target.files[0].size / 1048576).toFixed(2)} MB`; });
+    fileScanPanel.querySelector("#file-drop").addEventListener("dragover", event => { event.preventDefault(); event.currentTarget.classList.add("dragging"); });
+    fileScanPanel.querySelector("#file-drop").addEventListener("dragleave", event => event.currentTarget.classList.remove("dragging"));
+    fileScanPanel.querySelector("#file-drop").addEventListener("drop", event => { event.preventDefault(); event.currentTarget.classList.remove("dragging"); const files = event.dataTransfer.files; if (files.length) { const input = fileScanPanel.querySelector("#file-scan-file"); const transfer = new DataTransfer(); transfer.items.add(files[0]); input.files = transfer.files; input.dispatchEvent(new Event("change")); } });
     setupRegionAssistant();
     $("#session-input-form").addEventListener("submit", sendSessionInput);
     $("#session-stop").addEventListener("click", () => stopActiveSession(true));
@@ -1991,7 +2160,11 @@
     $("#terminal-button").addEventListener("click", () => startToolSession("terminal", "main", { title: "Complete Cros menu" }));
     $("#guide-button").addEventListener("click", () => openLearning("", "tutorials"));
     $$('[data-open]').forEach(button => button.addEventListener("click", () => openTarget(button.dataset.open)));
-    $("#exit-button").addEventListener("click", async () => { try { await api("/api/shutdown", { method: "POST", body: "{}" }); } catch (_) {} window.close(); });
+    $("#exit-button").addEventListener("click", async () => {
+      try { await api("/api/shutdown", { method: "POST", body: "{}" }); } catch (_) {}
+      window.close();
+      setTimeout(() => { if (!document.hidden) location.replace("about:blank"); }, 350);
+    });
   }
 
   async function openTarget(target) {
@@ -2000,6 +2173,9 @@
   }
 
   async function init() {
+    // Always reopen on the Home view; Settings is never a persisted startup screen.
+    setSettingsOpen(false);
+    window.scrollTo(0, 0);
     setupWorkspaceDock();
     await restoreAppearanceFromServer();
     restoreSettings();
