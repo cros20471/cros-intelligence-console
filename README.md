@@ -89,7 +89,7 @@ Add `-KeepLocalData` to the final PowerShell invocation if you want a desktop ba
 
 The complete walkthrough is in the **[Quick Start Tutorial](docs/QUICKSTART.md)**.
 
-## Privacy and OPSEC
+## Privacy
 
 - Cros does not require a hosted account.
 - The app server listens only on `127.0.0.1`.
