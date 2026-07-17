@@ -1,157 +1,79 @@
 # Quick Start Tutorial
 
-## Fast commands
+## 1. Install Cros
 
-Download/install:
+Open **PowerShell**. The prompt should begin with `PS`, not `>>>`.
+
+Paste the single supported installation command:
 
 ```powershell
 irm https://raw.githubusercontent.com/cros20471/cros-intelligence-console/main/install_cros.ps1 | iex
 ```
 
-Update:
+That one command:
 
-```powershell
-$u=Get-ChildItem ([Environment]::GetFolderPath('MyDocuments')),$HOME -Filter update_cros.ps1 -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if(!$u){throw 'Cros was not found'}; powershell -NoProfile -ExecutionPolicy Bypass -File $u.FullName
-```
+1. Finds Git and Python 3.11 or newer.
+2. Installs missing prerequisites through Windows Package Manager when available.
+3. Downloads Cros into your Documents folder.
+4. Installs Cros and its public-account search engines.
+5. Starts the local desktop app.
 
-Delete (requires typing `DELETE`):
+The first setup can take several minutes because Python packages and search-engine data must be downloaded. If Windows installs Git or Python but cannot see it immediately, reopen PowerShell and run the **same command** again—do not use a different install method.
 
-```powershell
-$u=Get-ChildItem ([Environment]::GetFolderPath('MyDocuments')),$HOME -Filter uninstall_cros.ps1 -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if(!$u){throw 'Cros was not found'}; powershell -NoProfile -ExecutionPolicy Bypass -File $u.FullName
-```
-
-## 1. Install Cros
-
-1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). Enable **Add Python to PATH** during setup.
-2. Download this repository with **Code → Download ZIP**, then extract it. Git users can clone it instead.
-3. Open PowerShell in the extracted folder and run the complete **One-block PowerShell setup** below. It installs Cros and the Blackbird account-search engine dependencies:
-
-   ```powershell
-   python -m pip install -r requirements.txt
-   ```
-
-4. Double-click `start_osint_tool.bat`.
-
-The console opens as a local web app. It listens only on `127.0.0.1`, so other computers cannot connect to it.
-
-### One-block PowerShell setup
-
-If Python and Git are already installed, paste this whole block into PowerShell:
-
-The prompt must look like `PS C:\Users\YourName>`. A `>>>` prompt is Python, not PowerShell; type `exit()` and open PowerShell from the Start menu before pasting.
-
-```powershell
-$url = "https://github.com/cros20471/cros-intelligence-console.git"
-$git = Get-Command git -ErrorAction SilentlyContinue
-function Find-CrosPython {
-  $candidates = @()
-  $launcher = Get-Command py -ErrorAction SilentlyContinue
-  if ($launcher) { $candidates += ,@("py", @("-3")) }
-  $command = Get-Command python -ErrorAction SilentlyContinue
-  if ($command -and $command.Source -notmatch "\\WindowsApps\\") { $candidates += ,@($command.Source, @()) }
-  $roots = @((Join-Path $env:LOCALAPPDATA "Programs\Python"), (Join-Path $env:LOCALAPPDATA "Python"), $env:ProgramFiles, ${env:ProgramFiles(x86)})
-  foreach ($root in $roots) {
-    if (-not $root -or -not (Test-Path $root)) { continue }
-    Get-ChildItem -LiteralPath $root -Directory -Filter "Python*" -ErrorAction SilentlyContinue | ForEach-Object {
-      $exe = Join-Path $_.FullName "python.exe"
-      if (Test-Path $exe) { $candidates += ,@($exe, @()) }
-    }
-  }
-  foreach ($candidate in $candidates) { & $candidate[0] @($candidate[1]) -c "import sys; print(sys.executable)" *> $null; if ($LASTEXITCODE -eq 0) { return [pscustomobject]@{ Command = $candidate[0]; Args = @($candidate[1]) } } }
-  return $null
-}
-$pythonSpec = Find-CrosPython
-if ((-not $git) -or (-not $pythonSpec)) {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "Git/Python are missing and winget is unavailable. Install Git from https://git-scm.com/download/win and Python from https://www.python.org/downloads/windows/, then reopen PowerShell." }
-  if (-not $git) { winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements }
-  if (-not $pythonSpec) { winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements }
-  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
-  $git = Get-Command git -ErrorAction SilentlyContinue; $pythonSpec = Find-CrosPython
-}
-if (-not $git) { throw "Git installation did not finish. Close and reopen PowerShell, then paste this block again." }
-if (-not $pythonSpec) { throw "Python is installed but Cros could not find a usable executable. Install Python from python.org with Add Python to PATH enabled, then reopen PowerShell." }
-$here = (Get-Location).Path
-$documents = [Environment]::GetFolderPath("MyDocuments")
-$oneDriveDocuments = Join-Path $HOME "OneDrive\Documents"
-$installRoot = if (Test-Path $oneDriveDocuments) { $oneDriveDocuments } else { $documents }
-$repo = if ((Test-Path (Join-Path $here ".git")) -or (Test-Path (Join-Path $here "start_osint_tool.bat"))) { $here } else { Join-Path $installRoot "cros-intelligence-console" }
-if (Test-Path (Join-Path $repo ".git")) { git -C $repo pull --ff-only } elseif (-not (Test-Path (Join-Path $repo "start_osint_tool.bat"))) { git clone $url $repo }
-Set-Location $repo
-$pythonExe = $pythonSpec.Command; $pythonArgs = @($pythonSpec.Args)
-& $pythonExe @pythonArgs -c "import sys; print('Python', sys.version.split()[0], 'from', sys.executable)"; if ($LASTEXITCODE -ne 0) { throw "Python could not be started. Install Python from python.org and enable the launcher/PATH option." }; & $pythonExe @pythonArgs -m pip install -r requirements.txt
-$engine = Join-Path $repo "blackbird"
-if (Test-Path (Join-Path $engine ".git")) { git -C $engine pull --ff-only } elseif (-not (Test-Path (Join-Path $engine "blackbird.py"))) { git clone "https://github.com/p1ngul1n0/blackbird.git" $engine }
-if (-not (Test-Path (Join-Path $engine "blackbird.py"))) { throw "Blackbird was not downloaded. Check Git and your internet connection, then run the block again." }
-$engineRequirements = Join-Path $engine "requirements.txt"
-if (-not (Test-Path $engineRequirements)) { throw "Blackbird requirements.txt is missing. Delete the blackbird folder and run the block again." }
-$tag = (& $pythonExe @pythonArgs -c "import sys; print(sys.implementation.cache_tag)").Trim(); $target = Join-Path $repo (Join-Path "engine_deps" $tag); New-Item -ItemType Directory -Force $target | Out-Null; $packages = @(Get-Content $engineRequirements | ForEach-Object { $name = ($_ -split '[<>=!~\[]')[0].Trim(); if ($name -match '^[A-Za-z0-9_.-]+$') { $name } }); & $pythonExe @pythonArgs -m pip install --target $target --upgrade @packages; if ($LASTEXITCODE -ne 0) { throw "Blackbird dependencies could not be installed." }
-Start-Process -FilePath (Join-Path $repo "start_osint_tool.bat") -WorkingDirectory $repo
-```
-
-This block is for a first-time install. If you downloaded a ZIP, use this block instead of the updater because ZIP folders do not contain Git history. If `python` is not recognized, replace the third line with `py -3 -m pip install -r requirements.txt`. If `git` is not recognized, close and reopen PowerShell after installing Git.
-
-## Update an existing installation
-
-Close Cros, open PowerShell, and paste this block:
-
-```powershell
-$roots = @([Environment]::GetFolderPath("MyDocuments"), [Environment]::GetFolderPath("Desktop"), (Join-Path $HOME "Downloads"), $HOME) | Select-Object -Unique
-$updateFile = $roots | Where-Object { Test-Path $_ } | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter "update_cros.ps1" -File -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
-$repo = if ($updateFile) { $updateFile.Directory.FullName } else { Read-Host "Paste the full path to your Cros folder" }
-if (-not (Test-Path (Join-Path $repo "update_cros.ps1"))) { throw "That folder does not contain update_cros.ps1: $repo" }
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo "update_cros.ps1")
-```
-
-This updates the existing checkout and restarts Cros. It keeps local notes, pins, map data, appearance, and the operator name on the computer.
+Cros opens as a local app and listens only on `127.0.0.1`, so other computers cannot connect to its local server.
 
 ## 2. Pin a tool and add a note
 
-1. Open **Tool Index**, choose a useful tool, and select **Pin**. It now appears at the top of **Investigation Workspace** for quick access.
-2. In **Durable Notes**, enter a label, an optional web link or local file/folder path, and a short note.
-3. Select **Add Pin**. Use **Top** to prioritize the note, **Open** to launch its target, **Copy** to copy it, or **Remove** to delete it.
+1. Open **Tool Index** and choose a useful workflow.
+2. Select **Pin** to keep it in the Investigation Workspace.
+3. Add a short label, optional link or local path, and the minimum note needed for your case.
+4. Use **Top**, **Open**, **Copy**, or **Remove** to manage the note.
 
-Pinned tools and notes stay in the local `workspace_state.json` file. They persist after the app closes and are not written into this repository or sent to GitHub.
+Pins and notes remain in the local `workspace_state.json` file and are excluded from Git.
 
-## 3. Open and resize the investigation workspace
+## 3. Resize the investigation workspace
 
-1. Select **Investigate** or **Map** in Cros.
-2. Drag the workspace's left edge to make the panel smaller or larger.
-3. Use the square button to maximize or restore it. Use **X** to collapse it into the small **Open Workspace** button.
+1. Select **Investigate** or **Map**.
+2. Drag the workspace's left edge to resize it.
+3. Use the square button to maximize or restore it.
+4. Use **X** to collapse it into the small restore button.
 
-The Research, Map, and Tool Session views share this one panel, so they do not take over the main app.
+Research, Map, and Tool Session share this panel without taking over the main app.
 
 ## 4. Build an investigation map
 
-1. Open **Map** and add your first entity, such as a person, account, domain, location, or piece of evidence.
+1. Open **Map** and add an entity such as an account, domain, person, location, or evidence item.
 2. Add related entities.
-3. Choose a **From** node and a **To** node, describe their relationship, and select **Connect**.
-4. Drag nodes to organize the map. Select a node to inspect its context or remove it.
+3. Choose a **From** node, **To** node, and relationship label.
+4. Select **Connect**, then drag nodes into a useful layout.
 
-The map is saved locally with your workspace and excluded from Git.
+The map is stored locally with your workspace and is never included in the repository.
 
-## 5. Search a username or inspect an image in the app
+## 5. Search a username or inspect an image
 
 1. Open **Investigate**.
-2. Enter a public username. Cros runs the installed Blackbird engine and streams live source checks in **Tool Session**; it does not invent profile links. If Blackbird is missing, run **Account Engine Setup** from the tool index first.
-3. For an image, choose **Complete**, **Face-region**, or **Location & metadata** scan, select a file, and choose **Analyze**.
-4. Review the local findings. Reverse-image buttons open third-party services, but Cros never uploads your selected file automatically.
+2. Enter a public username and choose an included account-search engine.
+3. For an image, select Complete, Face-region, or Location & metadata analysis.
+4. Review the formatted local findings before opening any third-party provider.
 
-Face-region mode only detects possible face-shaped regions. It does not identify people. Location mode reports embedded GPS when present and does not guess where a person lives.
+Face-region analysis detects possible face-shaped regions; it never identifies a person. Reverse-image buttons open provider pages but do not upload your selected image automatically.
 
-## 6. Run a tool safely
+## 6. Run tools safely
 
-1. Open **Tool Index** and search for a workflow.
-2. Select **Learn** before using an unfamiliar tool.
-3. Select **Launch Tool**. Its prompts, live progress bar, elapsed time, and output stay in the resizable Cros workspace; reply with the input field when asked.
-4. Save investigation results outside the application folder when they contain personal or sensitive information.
+1. Select **Learn** before using an unfamiliar workflow.
+2. Use only systems, accounts, and data you own or have explicit permission to examine.
+3. Treat public results as leads and verify identities across multiple reliable details.
+4. Keep sensitive case material outside the application folder.
 
-Only scan systems and accounts you own or have explicit permission to test.
+## 7. Update or remove Cros
 
-## 7. Keep personal data private
+The [main project page](../README.md#update) contains the single update command and the guarded uninstall command. Updating preserves local workspace data. Uninstalling requires typing `DELETE` before removal.
 
-- Do not commit `.env` files, reports, case notes, exports, keys, or local settings.
-- Review `git status` before every push.
-- Run the built-in **Secret Scanner** on the repository before publishing changes.
-- If a real credential is ever committed, rotate it immediately and remove it from Git history. Deleting it in a later commit is not enough.
+## Privacy checklist
 
-The included `.gitignore` blocks the common local-data and credential file types used by Cros.
+- Never commit `.env` files, reports, case notes, exports, keys, or local settings.
+- Review `git status` before publishing a fork.
+- Run the built-in Secret Scanner before sharing changes.
+- Rotate any real credential that was ever committed; deleting it in a later commit is not enough.
+
+Return to the [Cros project page](../README.md).

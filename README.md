@@ -49,13 +49,13 @@ It is built for legitimate research on information and systems you own or are au
 - PowerShell
 - Internet access for Git, Python dependencies, and public research providers
 
-Open **PowerShell** and paste:
+Open **PowerShell** and paste the single supported installation command:
 
 ```powershell
 irm https://raw.githubusercontent.com/cros20471/cros-intelligence-console/main/install_cros.ps1 | iex
 ```
 
-The installer downloads Cros to your Documents folder, installs the required Python packages and account-search engines, creates the local app shortcut, and starts Cros.
+The installer finds or installs Git and Python, downloads Cros to your Documents folder, installs the required Python packages and account-search engines, creates the local app shortcut, and starts Cros. If Windows has just installed a prerequisite and asks for a fresh terminal, reopen PowerShell and run the **same command** again.
 
 > Prefer to inspect scripts before running them? Open [`install_cros.ps1`](install_cros.ps1), review it, then download or clone the repository manually.
 
