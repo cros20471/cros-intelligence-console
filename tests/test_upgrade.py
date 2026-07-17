@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import threading
 import unittest
@@ -10,6 +11,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import app_catalog
 import app_server
@@ -33,7 +38,7 @@ class CatalogTests(unittest.TestCase):
         self.assertLessEqual(security, set(security_tools.SECURITY_ACTIONS))
 
     def test_ui_has_personalization_and_current_counts(self) -> None:
-        web = Path(__file__).resolve().parent / "web"
+        web = ROOT / "web"
         html = (web / "index.html").read_text(encoding="utf-8")
         script = (web / "app.js").read_text(encoding="utf-8")
         styles = (web / "styles.css").read_text(encoding="utf-8")
@@ -56,7 +61,7 @@ class CatalogTests(unittest.TestCase):
         self.assertIn("body.fixed-columns .tool-grid", styles)
 
     def test_window_identity_targets_the_real_app_title(self) -> None:
-        source = (Path(__file__).resolve().parent / "app_server.py").read_text(encoding="utf-8")
+        source = (ROOT / "app_server.py").read_text(encoding="utf-8")
         self.assertIn('buffer.value.startswith("Cros // Intelligence Center")', source)
         self.assertNotIn('"Cros // Intelligence Console" in buffer.value', source)
 

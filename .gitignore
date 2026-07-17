@@ -30,3 +30,6 @@ web/cros-logo-original.png
 .vscode/
 Thumbs.db
 .DS_Store
+/app.js
+/index.html
+/styles.css
