@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest a lawful improvement or workflow for Cros.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the research, usability, or defensive-security need.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Explain how you imagine the feature working inside Cros.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Research workflow
+        - Defensive security
+        - Interface and accessibility
+        - Workspace and reporting
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: authorization
+    attributes:
+      label: Intended use
+      options:
+        - label: This request is for lawful public information, local analysis, or systems I am authorized to examine.
+          required: true

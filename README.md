@@ -4,11 +4,18 @@
   <p><strong>A polished, local-first OSINT and defensive Windows workspace.</strong></p>
 
   <p>
-    <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-4f91ff?style=flat-square">
-    <img alt="Python" src="https://img.shields.io/badge/Python-3.11%2B-8566ff?style=flat-square">
-    <img alt="Tools" src="https://img.shields.io/badge/workflows-92-27d7e7?style=flat-square">
-    <img alt="Privacy" src="https://img.shields.io/badge/privacy-local--first-4dcc8b?style=flat-square">
-    <img alt="License" src="https://img.shields.io/badge/license-MIT-c9d0d5?style=flat-square">
+    <a href="https://github.com/cros20471/cros-intelligence-console/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/cros20471/cros-intelligence-console?style=for-the-badge&logo=github&color=8566ff"></a>
+    <a href="https://github.com/cros20471/cros-intelligence-console/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/cros20471/cros-intelligence-console?style=for-the-badge&logo=github&color=27d7e7"></a>
+    <a href="https://github.com/cros20471/cros-intelligence-console/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/cros20471/cros-intelligence-console?style=for-the-badge&logo=github&color=4dcc8b"></a>
+    <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/cros20471/cros-intelligence-console?style=for-the-badge&color=c9d0d5"></a>
+  </p>
+
+  <p>
+    <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-4f91ff?style=flat-square&logo=windows11">
+    <img alt="Python 3.11 or newer" src="https://img.shields.io/badge/Python-3.11%2B-8566ff?style=flat-square&logo=python">
+    <img alt="92 workflows" src="https://img.shields.io/badge/workflows-92-27d7e7?style=flat-square">
+    <img alt="Local-first privacy" src="https://img.shields.io/badge/privacy-local--first-4dcc8b?style=flat-square">
+    <img alt="Last commit" src="https://img.shields.io/github/last-commit/cros20471/cros-intelligence-console?style=flat-square&color=ffb84d">
   </p>
 
   <p>
@@ -16,7 +23,8 @@
     <a href="#what-you-get">Features</a> ·
     <a href="docs/QUICKSTART.md">Tutorial</a> ·
     <a href="docs/USER_GUIDE.md">User guide</a> ·
-    <a href="docs/SECURITY_GUIDE.md">Security guide</a>
+    <a href="docs/SECURITY_GUIDE.md">Security guide</a> ·
+    <a href="CONTRIBUTING.md">Contribute</a>
   </p>
 </div>
 
@@ -27,6 +35,14 @@
 Cros turns public-source research, local analysis, and defensive Windows checks into one focused desktop experience. It opens as an app window, keeps prompts and results inside the interface, and stores your workspace on your own computer.
 
 It is built for legitimate research on information and systems you own or are authorized to examine. Public results are leads—not proof—and should always be verified.
+
+### Built around a simple workflow
+
+<div align="center">
+
+`CHOOSE A TOOL` → `RUN LOCALLY` → `REVIEW RESULTS` → `SAVE CONTEXT` → `VERIFY`
+
+</div>
 
 ## What you get
 
@@ -124,6 +140,22 @@ Runtime engine folders, reports, local state, and generated dependencies are int
 - **[Quick Start Tutorial](docs/QUICKSTART.md)** — install Cros and run a first workflow.
 - **[User Guide](docs/USER_GUIDE.md)** — workspace, tools, maps, and research behavior.
 - **[Security Guide](docs/SECURITY_GUIDE.md)** — defensive checks, limitations, and interpretation.
+
+## Roadmap
+
+- [x] Native-looking Windows app experience
+- [x] 92 guided research and defensive workflows
+- [x] Local workspace, notes, maps, themes, and saved preferences
+- [x] In-app formatted results for supported engines
+- [ ] Signed release builds with versioned downloads
+- [ ] More structured result cards and export formats
+- [ ] Community-requested lawful workflows
+
+Have an idea? **[Request a feature](https://github.com/cros20471/cros-intelligence-console/issues/new?template=feature_request.yml)** or **[report a bug](https://github.com/cros20471/cros-intelligence-console/issues/new?template=bug_report.yml)**.
+
+## Community
+
+Contributions are welcome. Read the **[contribution guide](CONTRIBUTING.md)** before opening a pull request, and use the **[security policy](SECURITY.md)** for sensitive vulnerability reports.
 
 ## Development
 
