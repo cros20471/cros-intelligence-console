@@ -1,9 +1,5 @@
 <div align="center">
-  <img src="web/cros-logo.png" alt="Cros Intelligence Center logo" width="112" height="112">
-
-  <h1>Cros Intelligence Center</h1>
-
-  <p><strong>One console. Every public signal. Local-first by design.</strong></p>
+  <img src="docs/assets/banner.svg" alt="Cros Intelligence Center" width="100%">
 
   <p><strong>A polished, local-first OSINT and defensive Windows workspace.</strong></p>
 
