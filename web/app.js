@@ -57,6 +57,8 @@
     sessionSocialSignature: "",
     sessionEmailResults: [],
     sessionEmailSignature: "",
+    sessionDisplaySignature: "",
+    usernameProviders: {},
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -74,11 +76,14 @@
     return payload;
   }
 
-  const APPEARANCE_KEYS = ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose", "cros-operator-name"];
+  const APPEARANCE_KEYS = ["cros-interface-preset", "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-screen-fit", "cros-rail-autoclose", "cros-operator-name", "cros-logo-style"];
   let appearanceSaveTimer = 0;
   function appearanceSnapshot() { return Object.fromEntries(APPEARANCE_KEYS.filter(key => localStorage.getItem(key) !== null).map(key => [key, localStorage.getItem(key)])); }
   function queueAppearanceSave() { clearTimeout(appearanceSaveTimer); appearanceSaveTimer = setTimeout(() => { api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }, 180); }
-  function saveAppearanceNow() { clearTimeout(appearanceSaveTimer); api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }
+  function saveAppearanceNow() {
+    clearTimeout(appearanceSaveTimer);
+    return api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()), keepalive: true }).catch(() => {});
+  }
   async function restoreAppearanceFromServer() { try { const saved = await api("/api/appearance"); Object.entries(saved || {}).forEach(([key, value]) => { if (APPEARANCE_KEYS.includes(key)) localStorage.setItem(key, String(value)); }); } catch (_) {} }
   async function restoreProviderKeys() {
     try {
@@ -215,6 +220,14 @@
     }, 120);
   }
 
+  function saveWorkspaceNow() {
+    clearTimeout(workspaceSaveTimer);
+    localStorage.setItem("cros-favorite-tools", JSON.stringify([...state.favoriteTools]));
+    localStorage.setItem("cros-recent-tools", JSON.stringify(state.recentTools));
+    localStorage.setItem("cros-pinboard", JSON.stringify(state.pins));
+    return api("/api/workspace", { method: "POST", body: JSON.stringify(workspacePayload()), keepalive: true }).catch(() => {});
+  }
+
   async function loadWorkspace() {
     const localFavorites = [...state.favoriteTools];
     const localRecents = [...state.recentTools];
@@ -303,6 +316,15 @@
   async function launchTool(toolOrKey) {
     const tool = typeof toolOrKey === "string" ? state.tools.find(item => item.key === toolOrKey) : toolOrKey;
     if (!tool) return;
+    if (tool.key === "osint:17") {
+      recordRecent(tool); closeWorkspace(); setSettingsOpen(true); closeCommand();
+      toast("Appearance opened", "Customize the Cros app directly in Settings.");
+      return;
+    }
+    if (["osint:18", "advanced:20", "security:24"].includes(tool.key)) {
+      recordRecent(tool); closeCommand(); openLearning(tool.key === "osint:18" ? "" : tool.key, "tutorials");
+      return;
+    }
     if (["osint:1", "osint:2"].includes(tool.key)) {
       recordRecent(tool);
       state.identityToolId = tool.id;
@@ -325,12 +347,6 @@
       recordRecent(tool);
       closeCommand();
       startToolSession("security", "10", { title: "RAT & Malware File Scan" });
-      return;
-    }
-    if (tool.key === "advanced:20" || tool.key === "security:24") {
-      recordRecent(tool);
-      openLearning(tool.key === "security:24" ? "security:1" : "osint:1", "tutorials");
-      closeCommand();
       return;
     }
     recordRecent(tool);
@@ -677,13 +693,15 @@
   function updateSessionProgress(payload = {}) {
     const progress = $("#session-progress");
     const done = Boolean(payload.done);
+    const ready = Boolean(payload.ready);
     const failed = done && Number(payload.returncode || 0) !== 0;
-    progress.classList.toggle("running", !done);
-    progress.classList.toggle("complete", done && !failed);
+    progress.classList.toggle("running", !done && !ready);
+    progress.classList.toggle("complete", done && !failed && !ready);
     progress.classList.toggle("failed", failed);
-    progress.setAttribute("aria-valuetext", !done ? "Running live" : failed ? "Finished with an error" : "Complete");
-    $("#session-status").textContent = !done ? "LIVE" : failed ? "REVIEW" : "COMPLETE";
-    $("#session-stage").textContent = payload.stage || (!done ? "Working" : "Complete");
+    progress.classList.toggle("ready", ready);
+    progress.setAttribute("aria-valuetext", ready ? "Ready for input" : !done ? "Running live" : failed ? "Finished with an error" : "Complete");
+    $("#session-status").textContent = ready ? "READY" : payload.waiting_for_input ? "INPUT" : !done ? "LIVE" : failed ? "REVIEW" : "COMPLETE";
+    $("#session-stage").textContent = payload.stage || (ready ? "Ready" : !done ? "Working" : "Complete");
     $("#session-time").textContent = formatSessionTime(payload.elapsed_ms || 0);
   }
 
@@ -748,18 +766,41 @@
     } catch (_) { toast("Could not copy link", "Select the URL text and copy it manually.", true); }
   }
 
+  async function openAccountResult(account) {
+    if (!state.sessionId || !account?.url) return;
+    try {
+      await api("/api/session/result/open", { method: "POST", body: JSON.stringify({ session_id: state.sessionId, url: account.url }) });
+    } catch (error) { toast("Could not open result", error.message, true); }
+  }
+
+  async function copyAllAccountResults() {
+    const lines = state.sessionSocialResults.map(account => `${account.platform}\t${account.url}`).join("\n");
+    if (!lines) return;
+    try { await navigator.clipboard.writeText(lines); toast("Results copied", `${state.sessionSocialResults.length} public result${state.sessionSocialResults.length === 1 ? "" : "s"} copied.`); }
+    catch (_) { toast("Could not copy results", "Copy individual result links instead.", true); }
+  }
+
   function renderSessionSocialResults() {
     const section = $("#session-socials");
     const root = $("#session-social-list");
     section.hidden = !state.sessionSocialResults.length;
     root.replaceChildren();
-    state.sessionSocialResults.forEach(account => {
+    const filter = ($("#session-social-filter")?.value || "").trim().toLowerCase();
+    const visible = state.sessionSocialResults.filter(account => !filter || `${account.platform} ${account.url}`.toLowerCase().includes(filter));
+    $("#session-social-count").textContent = filter ? `${visible.length} / ${state.sessionSocialResults.length}` : `${state.sessionSocialResults.length} RESULT${state.sessionSocialResults.length === 1 ? "" : "S"}`;
+    if (!visible.length && state.sessionSocialResults.length) {
+      const empty = document.createElement("div"); empty.className = "session-result-empty"; empty.textContent = "No results match this filter."; root.append(empty); return;
+    }
+    visible.forEach(account => {
       const row = document.createElement("div"); row.className = "session-social-row";
       const copy = document.createElement("div");
       const name = document.createElement("strong"); name.textContent = account.platform;
       const url = document.createElement("span"); url.textContent = account.url;
-      copy.append(name, url);
+      const meta = document.createElement("small"); meta.className = "session-result-confidence"; meta.textContent = "LIVE ENGINE HIT · VERIFY IDENTITY";
+      copy.append(name, url, meta);
       const actions = document.createElement("div"); actions.className = "session-social-actions";
+      const openButton = document.createElement("button"); openButton.type = "button"; openButton.textContent = "OPEN RESULT";
+      openButton.addEventListener("click", () => openAccountResult(account));
       const copyButton = document.createElement("button"); copyButton.type = "button"; copyButton.className = "secondary"; copyButton.textContent = "COPY LINK";
       copyButton.addEventListener("click", () => copyAccountLink(account, copyButton));
       const button = document.createElement("button"); button.type = "button";
@@ -767,7 +808,7 @@
       button.textContent = mapped ? "ADDED" : "ADD TO MAP";
       button.disabled = mapped;
       button.addEventListener("click", () => addSocialToMap(account));
-      actions.append(copyButton, button); row.append(copy, actions); root.append(row);
+      actions.append(openButton, copyButton, button); row.append(copy, actions); root.append(row);
     });
   }
 
@@ -792,6 +833,73 @@
       button.addEventListener("click", () => copyEmail(value, button));
       row.append(email, button); root.append(row);
     });
+  }
+
+  function renderSessionAppResults(results = {}, payload = {}) {
+    const section = $("#session-app-results");
+    const root = $("#session-app-results-body");
+    const socialUrls = new Set(state.sessionSocialResults.map(item => item.url));
+    const links = (Array.isArray(results.links) ? results.links : []).filter(item => item?.url && !socialUrls.has(item.url));
+    const facts = Array.isArray(results.facts) ? results.facts : [];
+    const findings = Array.isArray(results.findings) ? results.findings : [];
+    const failed = Boolean(payload.done && Number(payload.returncode || 0) !== 0);
+    const completeEmpty = Boolean(payload.done && !failed && !links.length && !facts.length && !findings.length && !state.sessionSocialResults.length && !state.sessionEmailResults.length);
+    if (state.sessionSocialResults.length || (!links.length && !facts.length && !findings.length && !failed && !completeEmpty)) {
+      section.hidden = true;
+      root.replaceChildren();
+      return;
+    }
+    section.hidden = false;
+    root.replaceChildren();
+    const total = links.length + facts.length + findings.length;
+    $("#session-app-results-title").textContent = `${$("#session-title").textContent || "Tool"} result`;
+    $("#session-app-results-count").textContent = failed ? "NEEDS ATTENTION" : (total ? `${total} ITEM${total === 1 ? "" : "S"}` : "COMPLETE");
+
+    if (failed || completeEmpty) {
+      const status = document.createElement("div");
+      status.className = `app-result-status ${failed ? "is-error" : "is-complete"}`;
+      const mark = document.createElement("i"); mark.textContent = failed ? "!" : "✓";
+      const copy = document.createElement("div");
+      const heading = document.createElement("strong"); heading.textContent = failed ? "This tool could not finish" : "Task completed";
+      const note = document.createElement("span"); note.textContent = failed ? (payload.stage || "Review the input and try again.") : "Cros finished the tool successfully. No additional result fields were returned.";
+      copy.append(heading, note); status.append(mark, copy); root.append(status);
+    }
+
+    if (links.length) {
+      const group = document.createElement("section"); group.className = "app-result-group";
+      const title = document.createElement("h5"); title.textContent = links.length === 1 ? "RESEARCH DESTINATION" : "RESEARCH DESTINATIONS";
+      const grid = document.createElement("div"); grid.className = "app-link-grid";
+      links.forEach(item => {
+        const card = document.createElement("article"); card.className = "app-link-card";
+        const icon = document.createElement("i"); icon.textContent = "↗";
+        const copy = document.createElement("div");
+        const name = document.createElement("strong"); name.textContent = item.label || "Open web result";
+        const host = document.createElement("span"); host.textContent = item.host || item.url;
+        const url = document.createElement("small"); url.textContent = item.url;
+        copy.append(name, host, url);
+        const actions = document.createElement("div"); actions.className = "app-link-actions";
+        const open = document.createElement("button"); open.type = "button"; open.textContent = "OPEN"; open.addEventListener("click", () => openAccountResult(item));
+        const copyButton = document.createElement("button"); copyButton.type = "button"; copyButton.className = "secondary"; copyButton.textContent = "COPY"; copyButton.addEventListener("click", () => copyAccountLink(item, copyButton));
+        actions.append(open, copyButton); card.append(icon, copy, actions); grid.append(card);
+      });
+      group.append(title, grid); root.append(group);
+    }
+
+    if (facts.length) {
+      const group = document.createElement("section"); group.className = "app-result-group";
+      const title = document.createElement("h5"); title.textContent = "RESULT DETAILS";
+      const grid = document.createElement("dl"); grid.className = "app-fact-grid";
+      facts.forEach(item => { const card = document.createElement("div"); const label = document.createElement("dt"); const value = document.createElement("dd"); label.textContent = item.label; value.textContent = item.value; card.append(label, value); grid.append(card); });
+      group.append(title, grid); root.append(group);
+    }
+
+    if (findings.length) {
+      const group = document.createElement("section"); group.className = "app-result-group";
+      const title = document.createElement("h5"); title.textContent = "FINDINGS";
+      const list = document.createElement("ul"); list.className = "app-findings";
+      findings.forEach(value => { const item = document.createElement("li"); item.textContent = value; list.append(item); });
+      group.append(title, list); root.append(group);
+    }
   }
 
   async function pollToolSession() {
@@ -824,7 +932,20 @@
           renderSessionEmailResults();
         }
       }
+      if (payload.display_results && typeof payload.display_results === "object") {
+        const signature = JSON.stringify([payload.display_results, payload.done, payload.returncode, payload.stage]);
+        if (signature !== state.sessionDisplaySignature) {
+          state.sessionDisplaySignature = signature;
+          renderSessionAppResults(payload.display_results, payload);
+        }
+      }
       updateSessionProgress(payload);
+      const inputForm = $("#session-input-form");
+      inputForm.hidden = !payload.waiting_for_input || state.sessionDone;
+      if (payload.waiting_for_input) {
+        $("#session-input-label").textContent = payload.prompt || "TOOL NEEDS YOUR INPUT";
+        $("#session-input").focus({ preventScroll: true });
+      }
       if (!state.sessionDone) state.sessionPoll = setTimeout(pollToolSession, 350);
     } catch (error) {
       state.sessionDone = true;
@@ -845,19 +966,191 @@
     }
   }
 
+  async function runNativeWifiAudit(panel) {
+    updateSessionProgress({ done: false, stage: "Reading saved Wi-Fi security settings" });
+    try {
+      const result = await api("/api/wifi-audit", { method: "POST", body: "{}" });
+      const profiles = Array.isArray(result.profiles) ? result.profiles : [];
+      const reviewCount = profiles.filter(item => item.status === "review").length;
+      panel.innerHTML = `<div class="native-tool-head"><span>WINDOWS SECURITY · VISUAL AUDIT</span><h4>Saved Wi-Fi protection</h4><p>Authentication and encryption only. Cros never requests or reveals saved passwords.</p></div><div class="wifi-audit"><div class="wifi-summary"><div><strong>${profiles.length} saved profile${profiles.length === 1 ? "" : "s"}</strong><span>${reviewCount ? `${reviewCount} open network${reviewCount === 1 ? "" : "s"} should be reviewed` : "No open saved networks detected"}</span></div><b>${reviewCount ? "REVIEW" : "PROTECTED"}</b></div>${profiles.length ? `<div class="wifi-table-wrap"><table class="wifi-table"><thead><tr><th>NETWORK</th><th>AUTHENTICATION</th><th>CIPHER</th><th>SECURITY KEY</th><th>ASSESSMENT</th></tr></thead><tbody>${profiles.map(item => `<tr><td>${escapeHtml(item.profile)}</td><td>${escapeHtml(item.authentication)}</td><td>${escapeHtml(item.cipher)}</td><td>${escapeHtml(item.security_key)}</td><td><span class="wifi-status ${escapeHtml(item.status)}">${escapeHtml(item.review)}</span></td></tr>`).join("")}</tbody></table></div>` : `<div class="lab-empty"><strong>No saved profiles found</strong><span>Windows did not return any saved Wi-Fi networks.</span></div>`}<p class="wifi-note">${escapeHtml(result.note || "Wi-Fi passwords are never requested or displayed.")}</p></div>`;
+      updateSessionProgress({ done: true, returncode: 0, stage: reviewCount ? "Audit complete · review open networks" : "Audit complete" });
+    } catch (error) {
+      panel.innerHTML = `<div class="lab-empty"><strong>Wi-Fi audit unavailable</strong><span>${escapeHtml(error.message)}</span></div>`;
+      updateSessionProgress({ done: true, returncode: 1, stage: "Wi-Fi audit unavailable" });
+    }
+  }
+
+  function renderNativeLinkResults(root, { title = "Result", links = [], facts = [], note = "Prepared locally by Cros." } = {}) {
+    root.hidden = false;
+    root.replaceChildren();
+    const section = document.createElement("section"); section.className = "session-app-results native-generated-card";
+    const header = document.createElement("header");
+    const headingCopy = document.createElement("div"); const kicker = document.createElement("span"); kicker.textContent = "APP RESULTS";
+    const heading = document.createElement("h4"); heading.textContent = title; headingCopy.append(kicker, heading);
+    const count = document.createElement("b"); const total = links.length + facts.length; count.textContent = `${total} ITEM${total === 1 ? "" : "S"}`;
+    header.append(headingCopy, count);
+    const body = document.createElement("div"); body.className = "session-app-results-body";
+    if (links.length) {
+      const group = document.createElement("section"); group.className = "app-result-group";
+      const groupTitle = document.createElement("h5"); groupTitle.textContent = links.length === 1 ? "RESEARCH DESTINATION" : "CHOOSE A PROVIDER";
+      const grid = document.createElement("div"); grid.className = "app-link-grid";
+      links.forEach(item => {
+        const card = document.createElement("article"); card.className = "app-link-card";
+        const icon = document.createElement("i"); icon.textContent = "↗";
+        const copy = document.createElement("div"); const name = document.createElement("strong"); name.textContent = item.label;
+        const host = document.createElement("span"); host.textContent = item.host;
+        const value = document.createElement("small"); value.textContent = item.description || item.url;
+        copy.append(name, host, value);
+        const actions = document.createElement("div"); actions.className = "app-link-actions";
+        const open = document.createElement("button"); open.type = "button"; open.textContent = "OPEN"; open.addEventListener("click", () => openResearchUrl(item.url));
+        const copyButton = document.createElement("button"); copyButton.type = "button"; copyButton.className = "secondary"; copyButton.textContent = "COPY"; copyButton.addEventListener("click", () => copyAccountLink(item, copyButton));
+        actions.append(open, copyButton); card.append(icon, copy, actions); grid.append(card);
+      });
+      group.append(groupTitle, grid); body.append(group);
+    }
+    if (facts.length) {
+      const group = document.createElement("section"); group.className = "app-result-group";
+      const groupTitle = document.createElement("h5"); groupTitle.textContent = "RESULT DETAILS";
+      const list = document.createElement("dl"); list.className = "app-fact-grid";
+      facts.forEach(item => { const card = document.createElement("div"); const label = document.createElement("dt"); const value = document.createElement("dd"); label.textContent = item.label; value.textContent = item.value; card.append(label, value); list.append(card); });
+      group.append(groupTitle, list); body.append(group);
+    }
+    const foot = document.createElement("small"); foot.textContent = note;
+    section.append(header, body, foot); root.append(section);
+    setTimeout(() => root.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  function publicSearchLinks(query) {
+    const encoded = encodeURIComponent(query);
+    return [
+      { label: "Search with Google", host: "google.com", url: `https://www.google.com/search?q=${encoded}`, description: "Broad public-web results" },
+      { label: "Search with Bing", host: "bing.com", url: `https://www.bing.com/search?q=${encoded}`, description: "Independent web index" },
+      { label: "Search with DuckDuckGo", host: "duckduckgo.com", url: `https://duckduckgo.com/?q=${encoded}`, description: "Privacy-focused search" },
+    ];
+  }
+
+  async function runNativeDiagnostics(panel) {
+    const root = panel.querySelector("#native-generated-results");
+    try {
+      const payload = await api("/api/diagnostics");
+      const facts = (payload.checks || []).map(item => ({ label: item.label, value: item.value }));
+      renderNativeLinkResults(root, { title: "Cros health check", facts, note: "All checks are read-only and stay on this computer." });
+      const providers = document.createElement("div"); providers.className = "native-provider-status";
+      (payload.providers || []).forEach(item => { const card = document.createElement("div"); card.className = item.available ? "is-ready" : "is-review"; const copy = document.createElement("div"); const name = document.createElement("strong"); name.textContent = item.name; const description = document.createElement("span"); description.textContent = item.description; const badge = document.createElement("b"); badge.textContent = item.available ? "READY" : "REVIEW"; copy.append(name, description); card.append(copy, badge); providers.append(card); });
+      root.querySelector(".session-app-results-body").append(providers);
+      updateSessionProgress({ done: true, returncode: 0, stage: "Diagnostics complete" });
+    } catch (error) {
+      renderNativeLinkResults(root, { title: "Diagnostics unavailable", facts: [{ label: "Problem", value: error.message }] });
+      updateSessionProgress({ done: true, returncode: 1, stage: "Diagnostics unavailable" });
+    }
+  }
+
   function showNativeTool(category, id) {
     const panel = $("#native-tool-panel");
     panel.replaceChildren(); panel.hidden = true;
+    if (category === "osint" && String(id) === "4") {
+      panel.innerHTML = `<div class="native-tool-head"><span>OFFICIAL SERVICE · PRIVACY-FIRST</span><h4>Breach notifications</h4><p>Use Have I Been Pwned's official notification page. Your email is entered on their website and is never collected by Cros.</p></div><div class="native-privacy-card"><i>✓</i><div><strong>No email entered in Cros</strong><span>The official service handles verification and notifications directly.</span></div></div><div class="native-generated-results" id="native-generated-results"></div>`;
+      panel.hidden = false;
+      renderNativeLinkResults(panel.querySelector("#native-generated-results"), { title: "Official breach notification service", links: [{ label: "Open Have I Been Pwned", host: "haveibeenpwned.com", url: "https://haveibeenpwned.com/NotifyMe", description: "Official email notification enrollment" }], note: "Cros does not collect, transmit, or store your email address." });
+      setTimeout(() => updateSessionProgress({ done: true, returncode: 0, stage: "Official notification service ready" }), 0);
+      return true;
+    }
+    if (category === "osint" && String(id) === "6") {
+      panel.innerHTML = `<div class="native-tool-head"><span>WEB ARCHIVE · NATIVE WORKFLOW</span><h4>Website history</h4><p>Validate a public domain or URL, then open its capture timeline in the Internet Archive.</p></div><form class="native-workflow-form" id="native-history-form"><label class="native-field"><span>DOMAIN OR PUBLIC URL</span><input id="native-history-input" placeholder="example.com or https://example.com/page" required></label><button class="primary-button" type="submit">BUILD HISTORY VIEW <span>→</span></button></form><div class="native-generated-results" id="native-generated-results" hidden></div>`;
+      panel.hidden = false;
+      panel.querySelector("#native-history-form").addEventListener("submit", event => {
+        event.preventDefault();
+        try {
+          const raw = panel.querySelector("#native-history-input").value.trim();
+          const parsed = new URL(/^[a-z]+:\/\//i.test(raw) ? raw : `https://${raw}`);
+          if (!parsed.hostname || !["http:", "https:"].includes(parsed.protocol)) throw new Error();
+          const target = /^[a-z]+:\/\//i.test(raw) ? parsed.href : `${parsed.hostname}${parsed.pathname === "/" ? "" : parsed.pathname}${parsed.search}`;
+          const url = `https://web.archive.org/web/*/${target}`;
+          renderNativeLinkResults(panel.querySelector("#native-generated-results"), { title: "Website history ready", links: [{ label: "Open capture timeline", host: "web.archive.org", url, description: `Archived versions of ${parsed.hostname}` }], facts: [{ label: "Target", value: target }, { label: "Source", value: "Internet Archive Wayback Machine" }], note: "The target is only sent to the Internet Archive if you choose Open." });
+          updateSessionProgress({ done: true, returncode: 0, stage: "History research prepared" });
+        } catch (_) { toast("Enter a valid public URL", "Use a domain such as example.com or a complete http/https URL.", true); }
+      });
+      return true;
+    }
+    if (category === "osint" && String(id) === "7") {
+      panel.innerHTML = `<div class="native-tool-head"><span>QUERY STUDIO · NATIVE WORKFLOW</span><h4>Public search builder</h4><p>Create a focused query and choose which public search provider to use.</p></div><form class="native-workflow-form" id="native-search-builder"><label class="native-field"><span>DOMAIN, USERNAME, OR PHRASE</span><input id="native-search-target" placeholder="example.com, username, or exact phrase" required></label><label class="native-field"><span>SEARCH MODE</span><select id="native-search-mode"><option value="mentions">Exact mentions</option><option value="site">Search one site</option><option value="files">Public documents</option><option value="custom">Use as written</option></select></label><button class="primary-button" type="submit">BUILD SEARCH <span>→</span></button></form><div class="native-generated-results" id="native-generated-results" hidden></div>`;
+      panel.hidden = false;
+      panel.querySelector("#native-search-builder").addEventListener("submit", event => {
+        event.preventDefault(); const target = panel.querySelector("#native-search-target").value.trim().slice(0, 300); const mode = panel.querySelector("#native-search-mode").value;
+        if (!target) return;
+        const query = ({ mentions: `"${target.replaceAll('"', "")}"`, site: `site:${target.replace(/^https?:\/\//, "").split("/")[0]}`, files: `site:${target.replace(/^https?:\/\//, "").split("/")[0]} (filetype:pdf OR filetype:docx OR filetype:xlsx)`, custom: target })[mode];
+        renderNativeLinkResults(panel.querySelector("#native-generated-results"), { title: "Focused search ready", links: publicSearchLinks(query), facts: [{ label: "Query", value: query }, { label: "Mode", value: panel.querySelector("#native-search-mode").selectedOptions[0].textContent }], note: "Nothing is searched until you choose a provider." });
+        updateSessionProgress({ done: true, returncode: 0, stage: "Search query prepared" });
+      });
+      return true;
+    }
+    if (category === "osint" && String(id) === "8") {
+      panel.innerHTML = `<div class="native-tool-head"><span>PASTE RESEARCH · MULTI-SOURCE</span><h4>Find public paste references</h4><p>Build one transparent query across selected public paste and snippet sources.</p></div><form class="native-workflow-form" id="native-paste-form"><label class="native-field"><span>USERNAME, EMAIL, DOMAIN, OR PHRASE</span><input id="native-paste-term" placeholder="Public research term" required></label><fieldset class="native-source-picker"><legend>PUBLIC SOURCES</legend><label><input type="checkbox" value="pastebin.com" checked><span>Pastebin</span></label><label><input type="checkbox" value="rentry.co" checked><span>Rentry</span></label><label><input type="checkbox" value="gist.github.com" checked><span>GitHub Gist</span></label><label><input type="checkbox" value="hastebin.com"><span>Hastebin</span></label></fieldset><button class="primary-button" type="submit">PREPARE RESEARCH <span>→</span></button></form><div class="native-generated-results" id="native-generated-results" hidden></div>`;
+      panel.hidden = false;
+      panel.querySelector("#native-paste-form").addEventListener("submit", event => {
+        event.preventDefault(); const term = panel.querySelector("#native-paste-term").value.trim().replaceAll('"', "").slice(0, 240); const sources = [...panel.querySelectorAll(".native-source-picker input:checked")].map(input => input.value);
+        if (!term) return; if (!sources.length) { toast("Choose a public source", "Select at least one paste or snippet source.", true); return; }
+        const query = `(${sources.map(source => `site:${source}`).join(" OR ")}) "${term}"`;
+        renderNativeLinkResults(panel.querySelector("#native-generated-results"), { title: "Paste research plan", links: publicSearchLinks(query), facts: [{ label: "Research term", value: term }, { label: "Sources", value: sources.join(", ") }, { label: "Query", value: query }], note: "Search providers may return no results. A match is a lead and should be verified at the original public source." });
+        updateSessionProgress({ done: true, returncode: 0, stage: "Paste research prepared" });
+      });
+      return true;
+    }
+    if (category === "advanced" && String(id) === "16") {
+      panel.innerHTML = `<div class="native-tool-head"><span>MAP RESEARCH · NATIVE WORKFLOW</span><h4>Coordinate helper</h4><p>Validate latitude and longitude, then choose a map provider.</p></div><form class="native-workflow-form native-coordinate-form" id="native-coordinate-form"><label class="native-field"><span>LATITUDE</span><input id="native-latitude" inputmode="decimal" placeholder="34.0522" required></label><label class="native-field"><span>LONGITUDE</span><input id="native-longitude" inputmode="decimal" placeholder="-118.2437" required></label><button class="primary-button" type="submit">VALIDATE COORDINATES <span>→</span></button></form><div class="native-generated-results" id="native-generated-results" hidden></div>`;
+      panel.hidden = false;
+      panel.querySelector("#native-coordinate-form").addEventListener("submit", event => {
+        event.preventDefault(); const lat = Number(panel.querySelector("#native-latitude").value); const lon = Number(panel.querySelector("#native-longitude").value);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) { toast("Coordinates are invalid", "Latitude must be -90 to 90 and longitude -180 to 180.", true); return; }
+        const value = `${lat},${lon}`;
+        renderNativeLinkResults(panel.querySelector("#native-generated-results"), { title: "Coordinates validated", links: [{ label: "Open Google Maps", host: "google.com", url: `https://www.google.com/maps?q=${value}`, description: "Satellite and street map" }, { label: "Open OpenStreetMap", host: "openstreetmap.org", url: `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`, description: "Community-maintained map" }], facts: [{ label: "Latitude", value: String(lat) }, { label: "Longitude", value: String(lon) }], note: "Opening a provider sends only these coordinates to that provider." });
+        updateSessionProgress({ done: true, returncode: 0, stage: "Coordinates validated" });
+      });
+      return true;
+    }
+    if (category === "advanced" && String(id) === "18") {
+      panel.innerHTML = `<div class="native-tool-head"><span>ENGINE PACK · READ-ONLY STATUS</span><h4>Account engine health</h4><p>Cros includes its username engines. Review readiness here—no terminal installation workflow.</p></div><div class="native-generated-results" id="native-generated-results"></div>`;
+      panel.hidden = false;
+      api("/api/username-providers").then(payload => {
+        const facts = (payload.providers || []).map(item => ({ label: item.name, value: item.available ? `Ready · ${item.description}` : `Needs repair · ${item.description}` }));
+        renderNativeLinkResults(panel.querySelector("#native-generated-results"), { title: "Included engine pack", facts, note: "If an included engine needs repair, reinstall the Cros package instead of running terminal commands." });
+        updateSessionProgress({ done: true, returncode: 0, stage: "Engine status ready" });
+      }).catch(error => { renderNativeLinkResults(panel.querySelector("#native-generated-results"), { title: "Engine status unavailable", facts: [{ label: "Problem", value: error.message }] }); updateSessionProgress({ done: true, returncode: 1, stage: "Engine status unavailable" }); });
+      return true;
+    }
+    if (category === "advanced" && String(id) === "19") {
+      panel.innerHTML = `<div class="native-tool-head"><span>LOCAL APP · VISUAL HEALTH CHECK</span><h4>Cros diagnostics</h4><p>Checking the app runtime, local binding, data folder, and included username engines.</p></div><div class="native-generated-results" id="native-generated-results"></div>`;
+      panel.hidden = false; setTimeout(() => runNativeDiagnostics(panel), 0); return true;
+    }
+    if (category === "security" && String(id) === "11") {
+      panel.innerHTML = `<div class="native-tool-head"><span>HASH REPUTATION · LOCAL-FIRST</span><h4>Check a SHA-256 reputation</h4><p>Enter a SHA-256 or choose a file to hash locally in the app. Only the hash is sent if you open a provider.</p></div><form class="native-workflow-form" id="native-hash-reputation-form"><label class="native-field"><span>SHA-256 (OPTIONAL WHEN A FILE IS CHOSEN)</span><input id="native-reputation-hash" placeholder="64 hexadecimal characters" maxlength="64"></label><label class="native-file-choice"><span>OR HASH A FILE LOCALLY</span><input id="native-reputation-file" type="file"><b id="native-reputation-file-label">Choose file</b></label><button class="primary-button" type="submit">PREPARE REPUTATION CHECK <span>→</span></button></form><div class="native-generated-results" id="native-generated-results" hidden></div>`;
+      panel.hidden = false;
+      panel.querySelector("#native-reputation-file").addEventListener("change", event => { panel.querySelector("#native-reputation-file-label").textContent = event.target.files[0]?.name || "Choose file"; });
+      panel.querySelector("#native-hash-reputation-form").addEventListener("submit", async event => {
+        event.preventDefault(); let digest = panel.querySelector("#native-reputation-hash").value.trim().toLowerCase(); const file = panel.querySelector("#native-reputation-file").files[0];
+        if (file) { if (file.size > 200 * 1024 * 1024) { toast("File is too large", "Choose a file under 200 MB for local browser hashing.", true); return; } updateSessionProgress({ done: false, stage: "Hashing file locally" }); const hash = await crypto.subtle.digest("SHA-256", await file.arrayBuffer()); digest = [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, "0")).join(""); }
+        if (!/^[a-f0-9]{64}$/.test(digest)) { toast("Enter a valid SHA-256", "Use 64 hexadecimal characters or choose a file.", true); return; }
+        renderNativeLinkResults(panel.querySelector("#native-generated-results"), { title: "Hash reputation providers", links: [{ label: "Check VirusTotal", host: "virustotal.com", url: `https://www.virustotal.com/gui/file/${digest}`, description: "Multi-engine reputation page" }, { label: "Check MalwareBazaar", host: "bazaar.abuse.ch", url: `https://bazaar.abuse.ch/browse.php?search=sha256%3A${digest}`, description: "Public malware sample index" }], facts: [{ label: "SHA-256", value: digest }, { label: "File handling", value: file ? "Hashed locally · file not uploaded" : "Hash entered manually" }], note: "Cros never uploads the file. Opening a provider sends only the SHA-256 in the URL." });
+        updateSessionProgress({ done: true, returncode: 0, stage: "Reputation research prepared" });
+      });
+      return true;
+    }
     if (category === "advanced" && String(id) === "12") {
       panel.innerHTML = `<div class="native-tool-head"><span>LOCAL TOOL · NO TERMINAL</span><h4>Base64 encoder / decoder</h4><p>Base64 is encoding, not encryption. Choose an action, enter text, and run it locally.</p></div><div class="choice-bubbles"><button type="button" class="active" data-native-mode="encode">ENCODE</button><button type="button" data-native-mode="decode">DECODE</button></div><label class="native-field"><span>INPUT</span><textarea id="native-base64-input" placeholder="Paste text or Base64 data"></textarea></label><button type="button" class="primary-button" id="native-base64-run">RUN LOCALLY <span>→</span></button><label class="native-field"><span>RESULT</span><textarea id="native-base64-output" readonly></textarea></label>`;
       panel.hidden = false; let mode = "encode";
       panel.querySelectorAll("[data-native-mode]").forEach(button => button.addEventListener("click", () => { mode = button.dataset.nativeMode; panel.querySelectorAll("[data-native-mode]").forEach(item => item.classList.toggle("active", item === button)); }));
-      $("#native-base64-run").addEventListener("click", () => { try { const input = $("#native-base64-input").value; $("#native-base64-output").value = mode === "encode" ? btoa(unescape(encodeURIComponent(input))) : decodeURIComponent(escape(atob(input.replace(/\s+/g, "")))); } catch (_) { $("#native-base64-output").value = "Invalid Base64 input."; } });
+      $("#native-base64-run").addEventListener("click", () => { try { const input = $("#native-base64-input").value; $("#native-base64-output").value = mode === "encode" ? btoa(unescape(encodeURIComponent(input))) : decodeURIComponent(escape(atob(input.replace(/\s+/g, "")))); updateSessionProgress({ done: true, returncode: 0, stage: "Encoding complete" }); } catch (_) { $("#native-base64-output").value = "Invalid Base64 input."; updateSessionProgress({ done: true, returncode: 1, stage: "Invalid Base64 input" }); } });
       return true;
     }
     if (category === "advanced" && String(id) === "4") {
       panel.innerHTML = `<div class="native-tool-head"><span>LOCAL TOOL · NO TERMINAL</span><h4>URL parser</h4><p>Break a URL into readable parts without opening it.</p></div><label class="native-field"><span>URL</span><input id="native-url-input" placeholder="https://example.com/path?query=value"></label><button type="button" class="primary-button" id="native-url-run">PARSE LOCALLY <span>→</span></button><pre class="native-output" id="native-url-output">Enter a URL to inspect its parts.</pre>`;
-      panel.hidden = false; $("#native-url-run").addEventListener("click", () => { try { const url = new URL($("#native-url-input").value); $("#native-url-output").textContent = JSON.stringify({ scheme: url.protocol.replace(":", ""), host: url.hostname, port: url.port || "default", path: url.pathname, query: Object.fromEntries(url.searchParams.entries()), fragment: url.hash.slice(1) }, null, 2); } catch (_) { $("#native-url-output").textContent = "Enter a valid URL."; } });
+      panel.hidden = false; $("#native-url-run").addEventListener("click", () => { try { const url = new URL($("#native-url-input").value); $("#native-url-output").textContent = JSON.stringify({ scheme: url.protocol.replace(":", ""), host: url.hostname, port: url.port || "default", path: url.pathname, query: Object.fromEntries(url.searchParams.entries()), fragment: url.hash.slice(1) }, null, 2); updateSessionProgress({ done: true, returncode: 0, stage: "URL analysis complete" }); } catch (_) { $("#native-url-output").textContent = "Enter a valid URL."; updateSessionProgress({ done: true, returncode: 1, stage: "Enter a valid URL" }); } });
+      return true;
+    }
+    if (category === "security" && String(id) === "33") {
+      panel.innerHTML = `<div class="native-tool-head"><span>WINDOWS SECURITY · VISUAL AUDIT</span><h4>Saved Wi-Fi protection</h4><p>Reading authentication and encryption settings without accessing passwords.</p></div><div class="scan-progress-card"><div class="scan-orbit"><i></i></div><strong>Checking saved networks</strong><span>Windows is returning profile security details…</span><div class="scan-progress-track"><i></i></div></div>`;
+      panel.hidden = false;
+      setTimeout(() => runNativeWifiAudit(panel), 0);
       return true;
     }
     if (category === "security" && String(id) === "10") {
@@ -882,8 +1175,9 @@
     clearTimeout(state.sessionPoll);
     openWorkspace("session");
     $("#session-log").hidden = true;
+    $("#session-log").open = false;
     $("#session-input-form").hidden = true;
-    $("#session-advanced-toggle").textContent = "ADVANCED";
+    $("#session-advanced-toggle").textContent = "ENGINE DETAILS";
     $("#session-title").textContent = options.title || "Tool session";
     $("#session-output").textContent = "Starting inside Cros…";
     state.sessionId = "";
@@ -893,14 +1187,20 @@
     state.sessionSocialSignature = "";
     state.sessionEmailResults = [];
     state.sessionEmailSignature = "";
+    state.sessionDisplaySignature = "";
     renderSessionSocialResults();
     renderSessionEmailResults();
+    $("#session-app-results").hidden = true;
+    $("#session-app-results-body").replaceChildren();
     updateSessionProgress({ done: false, stage: "Starting local tool", elapsed_ms: 0 });
-    if (showNativeTool(category, id)) { $("#session-status").textContent = "LOCAL"; $("#session-stage").textContent = "Ready · running inside Cros"; updateSessionProgress({ done: true, returncode: 0, stage: "Complete", elapsed_ms: 0 }); return; }
+    if (showNativeTool(category, id)) { updateSessionProgress({ ready: true, done: false, stage: "Ready for your input", elapsed_ms: 0 }); return; }
     try {
-      const payload = await api("/api/session/start", {
+      const providerSession = category === "username-provider";
+      const payload = await api(providerSession ? "/api/username-session/start" : "/api/session/start", {
         method: "POST",
-        body: JSON.stringify({ category, id, username: options.username || "" }),
+        body: JSON.stringify(providerSession
+          ? { provider: options.provider || id, username: options.username || "" }
+          : { category, id, username: options.username || "" }),
       });
       state.sessionId = payload.id;
       if (category === "osint" && String(id) === "4") {
@@ -911,6 +1211,7 @@
       state.sessionDone = true;
       $("#session-output").textContent = error.message;
       updateSessionProgress({ done: true, returncode: 1, stage: "Could not start" });
+      renderSessionAppResults({}, { done: true, returncode: 1, stage: error.message });
       toast("Launch blocked", error.message, true);
     }
   }
@@ -922,7 +1223,8 @@
     try {
       await api("/api/session/input", { method: "POST", body: JSON.stringify({ session_id: state.sessionId, input: input.value }) });
       input.value = "";
-      input.focus();
+      $("#session-input-form").hidden = true;
+      updateSessionProgress({ done: false, stage: "Continuing with your input" });
     } catch (error) {
       toast("Input was not sent", error.message, true);
     }
@@ -932,19 +1234,34 @@
     event.preventDefault();
     const query = $("#name-search-query").value.trim();
     if (!query) return;
+    const provider = $("#name-provider-select").value || "blackbird";
+    $("#name-search-loading").textContent = `STARTING ${provider.toUpperCase()}…`;
     $("#name-search-loading").hidden = false;
     try {
       const root = $("#name-results");
       root.replaceChildren();
+      if (provider === "quick") {
+        const response = await api("/api/free-public-search", { method: "POST", body: JSON.stringify({ username: query }) });
+        renderPublicProviderResults(root, "CROS QUICK CHECK", response.results,
+          "Fast public GitHub and GitLab results. A matching username is a lead, not proof of identity.");
+        return;
+      }
       const status = document.createElement("div");
       status.className = "blackbird-live-note";
-      status.innerHTML = "<strong>BLACKBIRD LIVE SESSION</strong><span>Results are streaming in Tool Session. Only accounts returned by the installed engine are shown.</span>";
+      status.innerHTML = `<strong>${escapeHtml(provider.toUpperCase())} LIVE SESSION</strong><span>Verified public results will appear as profile cards in Tool Session.</span>`;
       root.append(status);
-      const toolId = state.identityToolId === "2" ? "2" : "1";
-      const label = toolId === "2" ? "Blackbird variations" : "Blackbird";
-      await startToolSession("osint", toolId, { username: query, title: `${label} · ${query}` });
+      if (provider === "blackbird") {
+        const toolId = state.identityToolId === "2" ? "2" : "1";
+        const label = toolId === "2" ? "Blackbird variations" : "Blackbird";
+        await startToolSession("osint", toolId, { username: query, title: `${label} · ${query}`, hideOutput: true });
+      } else {
+        const info = state.usernameProviders[provider];
+        if (!info?.available) throw new Error(`${info?.name || provider} is unavailable in this Cros engine pack. Reopen Cros or run the updater to repair it.`);
+        await startToolSession("username-provider", provider, { provider, username: query,
+          title: `${info.name} · ${query}`, hideOutput: true });
+      }
     } catch (error) {
-      toast("Blackbird search unavailable", error.message, true);
+      toast("Username search unavailable", error.message, true);
     } finally {
       $("#name-search-loading").hidden = true;
     }
@@ -1011,9 +1328,9 @@
   function updateNameProviderCard(provider) {
     const values = {
       blackbird: { kicker: "01 / BLACKBIRD USERNAME SEARCH", description: "Run the installed Blackbird engine inside Cros. Results come from live public-site checks—not guessed profile links.", stats: ["600+", "public site checks", "LIVE", "verified responses"] },
-      free: { kicker: "01 / FREE PUBLIC API SEARCH", description: "Check public GitHub and GitLab profiles without an API key. Results are limited to what those services expose publicly.", stats: ["2", "free APIs", "NO KEY", "public profiles"] },
-      osintdog: { kicker: "01 / OSINT DOG API SEARCH", description: "Use your own OSINT Dog key for an authenticated multi-source lookup. Sensitive credential-like fields are redacted in Cros.", stats: ["15+", "intelligence sources", "BYOK", "your API key"] },
-      both: { kicker: "01 / DUAL PROVIDER SEARCH", description: "Run Blackbird public-site checks and OSINT Dog API lookup together, then compare returned evidence.", stats: ["600+", "site checks", "+15", "API sources"] },
+      quick: { kicker: "01 / CROS QUICK CHECK", description: "Check public GitHub and GitLab profiles immediately without an API key or extra installation.", stats: ["2", "public services", "READY", "no install"] },
+      sherlock: { kicker: "01 / SHERLOCK USERNAME SEARCH", description: "Run the included Sherlock engine locally for focused public-account checks across hundreds of networks.", stats: ["400+", "public networks", "BUNDLED", "ready in Cros"] },
+      maigret: { kicker: "01 / MAIGRET USERNAME SEARCH", description: "Run the included Maigret engine locally for a broader, deeper public username search.", stats: ["500", "default checks", "BUNDLED", "ready in Cros"] },
     }[provider] || null;
     if (!values) return;
     $("#name-provider-kicker").textContent = values.kicker;
@@ -1021,6 +1338,38 @@
     const stats = $("#name-provider-stats");
     stats.replaceChildren();
     values.stats.forEach((value, index) => { const node = document.createElement(index % 2 ? "span" : "b"); node.textContent = value; stats.append(node); if (index === 1) { const divider = document.createElement("i"); stats.append(divider); } });
+  }
+
+  async function loadUsernameProviders() {
+    const payload = await api("/api/username-providers");
+    state.usernameProviders = Object.fromEntries((payload.providers || []).map(item => [item.id, item]));
+    const select = $("#name-provider-select");
+    $$('option', select).forEach(option => {
+      const info = state.usernameProviders[option.value];
+      if (!info) return;
+      option.textContent = `${info.name} · ${info.available ? "ready" : "not installed"}`;
+    });
+    const saved = localStorage.getItem("cros-name-provider") || "blackbird";
+    setNameProvider(state.usernameProviders[saved] ? saved : "blackbird", false);
+    $$(".engine-option", $("#name-provider-picker")).forEach(button => {
+      const info = state.usernameProviders[button.dataset.provider];
+      const available = Boolean(info?.available);
+      button.classList.toggle("is-unavailable", !available);
+      button.querySelector("em").textContent = available ? "INCLUDED" : "REPAIR";
+      button.title = available ? `${info.name} is included and ready` : `${info?.name || button.dataset.provider} needs repair`;
+    });
+  }
+
+  function setNameProvider(provider, persist = true) {
+    const selected = state.usernameProviders[provider] ? provider : "blackbird";
+    $("#name-provider-select").value = selected;
+    $$(".engine-option", $("#name-provider-picker")).forEach(button => {
+      const active = button.dataset.provider === selected;
+      button.setAttribute("aria-checked", String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    if (persist) localStorage.setItem("cros-name-provider", selected);
+    updateNameProviderCard(selected);
   }
 
   function readFileAsBase64(file) {
@@ -1746,6 +2095,7 @@
     document.documentElement.style.setProperty("--accent", values[0]);
     document.documentElement.style.setProperty("--accent-rgb", values[1]);
     document.documentElement.style.setProperty("--accent-soft", values[2]);
+    document.documentElement.style.setProperty("--cros-preset-color", values[0]);
     $$('[data-accent]').forEach(button => button.classList.toggle("active", button.dataset.accent === name));
     $("#custom-accent").value = values[0];
     localStorage.setItem("cros-accent", name);
@@ -1764,6 +2114,7 @@
     document.documentElement.style.setProperty("--accent", hex);
     document.documentElement.style.setProperty("--accent-rgb", rgb.join(", "));
     document.documentElement.style.setProperty("--accent-soft", `rgb(${soft.join(", ")})`);
+    document.documentElement.style.setProperty("--cros-preset-color", hex);
     $$('[data-accent]').forEach(button => button.classList.remove("active"));
     localStorage.setItem("cros-accent", "custom");
     localStorage.setItem("cros-custom-accent", hex);
@@ -1778,13 +2129,30 @@
     document.body.classList.toggle("settings-open", open);
   }
 
+  function jumpSettings(section) {
+    const targets = {
+      "settings-logo": $(".logo-settings"),
+      "settings-themes": $(".interface-presets"),
+      "settings-colors": $(".color-settings"),
+      "settings-layout": $(".screen-fit-section"),
+      "settings-motion": $("#particle-toggle")?.closest(".drawer-section"),
+      "settings-data": $("#reset-appearance")?.closest(".drawer-section"),
+    };
+    const target = targets[section];
+    if (!target) return;
+    $$('[data-settings-jump]').forEach(button => button.classList.toggle("active", button.dataset.settingsJump === section));
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   async function scanDroppedFile(event) {
     event.preventDefault();
     const scanPanel = event.currentTarget.closest(".file-scan-host") || document.querySelector("#tools .security-file-scan");
+    const inNativeTool = Boolean(scanPanel.closest("#native-tool-panel"));
     const file = scanPanel.querySelector("input[type=\"file\"]").files[0];
     if (!file) { toast("Choose a file first", "Drop a file or use the file picker.", true); return; }
     if (file.size > 25_000_000) { toast("File is too large", "Choose a file smaller than 25 MB.", true); return; }
     const results = scanPanel.querySelector(".file-scan-results");
+    if (inNativeTool) updateSessionProgress({ done: false, stage: "Scanning locally" });
     results.innerHTML = `<div class="scan-progress-card"><div class="scan-orbit"><i></i></div><strong id="scan-progress-title">Preparing local scan</strong><span id="scan-progress-detail">Creating a temporary isolated copy…</span><div class="scan-progress-track"><i></i></div></div>`;
     const scanStages = [["Hashing file", "Calculating SHA-256 locally…"], ["Inspecting structure", file.name.toLowerCase().endsWith(".jar") ? "Opening JAR contents without executing them…" : "Checking file type and static indicators…"], ["Running Defender", "Microsoft Defender is scanning the temporary copy…"]];
     let scanStage = 0;
@@ -1799,9 +2167,11 @@
       const jar = result.jar_summary;
       const jarRow = jar ? `<div class="jar-summary"><b>JAR STRUCTURE</b><span>${jar.integrity} · ${jar.entries} entries · ${jar.classes} classes · ${jar.native_libraries} native libraries · ${jar.nested_archives} nested archives · manifest ${jar.manifest ? "present" : "absent"}</span></div>` : "";
       results.innerHTML = `<div class="file-scan-card ${outcomeClass}"><div class="file-scan-status ${outcomeClass}">${detections.length ? "CONFIRMED DEFENDER DETECTION" : assessment === "likely RAT-like behavior" ? "LIKELY RAT-LIKE BEHAVIOR" : assessment === "likely keylogger behavior" ? "LIKELY KEYLOGGER BEHAVIOR" : flagged ? "SUSPICIOUS INDICATORS" : "NO RAT INDICATORS FOUND"}</div><dl><dt>FILE</dt><dd>${escapeHtml(result.file_name)}</dd><dt>SHA-256</dt><dd class="hash-value">${escapeHtml(result.sha256)}</dd><dt>ASSESSMENT</dt><dd>${escapeHtml(assessment)}</dd><dt>DEFENDER</dt><dd>${escapeHtml(result.defender)}</dd><dt>REVIEW</dt><dd>${escapeHtml(result.review)}</dd></dl>${jarRow}${indicators.length ? `<div class="file-indicators"><b>LOCAL INDICATORS</b><ul>${indicators.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>` : ""}${detections.length ? `<pre>${escapeHtml(JSON.stringify(detections, null, 2))}</pre>` : "<small>Heuristics identify behavior patterns; only Defender or another confirmed signature establishes a confirmed detection.</small>"}<button type="button" class="scan-again-button">SCAN AGAIN</button></div>`;
+      if (inNativeTool) updateSessionProgress({ done: true, returncode: 0, stage: flagged ? "Scan complete · review findings" : "Scan complete" });
       results.querySelector(".scan-again-button").addEventListener("click", () => { const input = scanPanel.querySelector("input[type=\"file\"]"); const drop = scanPanel.querySelector(".file-drop"); input.value = ""; drop.classList.remove("has-file"); drop.querySelector("strong").textContent = "Drop a file here"; const label = drop.querySelector("span"); if (label) label.textContent = "25 MB maximum · local only"; results.innerHTML = "<div class=\"lab-empty\"><strong>Ready for another scan</strong><span>Drop a file or choose one to begin.</span></div>"; });
     } catch (error) {
       results.innerHTML = `<div class="lab-empty"><strong>Scan failed</strong><span>${escapeHtml(error.message)}</span></div>`;
+      if (inNativeTool) updateSessionProgress({ done: true, returncode: 1, stage: "Scan failed" });
       toast("File scan failed", error.message, true);
     } finally { clearInterval(scanTimer); }
   }
@@ -1877,7 +2247,83 @@
     if (save) localStorage.setItem("cros-columns", selected);
   }
 
+  function setScreenFit(value, save = true) {
+    const selected = ["laptop", "medium", "large"].includes(value) ? value : "medium";
+    document.documentElement.dataset.screenFit = selected;
+    $$("[data-screen-fit]").forEach(button => {
+      const active = button.dataset.screenFit === selected;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-checked", String(active));
+    });
+    const recommended = { laptop: 680, medium: 620, large: 760 }[selected];
+    const width = Math.max(360, Math.min(recommended, innerWidth - 16));
+    document.documentElement.style.setProperty("--workspace-width", `${width}px`);
+    if ($("#workspace-width-control")) {
+      $("#workspace-width-control").value = String(width);
+      $("#workspace-width-value").textContent = `${width}px`;
+    }
+    handleWorkspaceViewportChange();
+    if (save) localStorage.setItem("cros-screen-fit", selected);
+  }
+
+  function setInterfacePreset(value, save = true) {
+    const available = new Set(["flux", "cros", "arctic", "matrix", "amber", "mono", "ocean", "rose", "cyber", "midnight"]);
+    const selected = available.has(value) ? value : "flux";
+    document.documentElement.dataset.interfacePreset = selected;
+    $$('[data-interface-preset]').forEach(button => {
+      const active = button.dataset.interfacePreset === selected;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    if (save) localStorage.setItem("cros-interface-preset", selected);
+  }
+
+  function showLogoSelection(value) {
+    const selected = ["original", "signal", "scope", "shield", "mono", "custom"].includes(value) ? value : "original";
+    $$('[data-logo-style]').forEach(button => {
+      const active = button.dataset.logoStyle === selected;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-checked", String(active));
+    });
+    return selected;
+  }
+
+  function refreshAppIcon(url) {
+    $$('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(link => { link.href = url; });
+  }
+
+  async function changeLogoStyle(preset, image = "") {
+    const buttons = $$('[data-logo-style]');
+    buttons.forEach(button => { button.disabled = true; });
+    $("#logo-note").textContent = "Updating the Cros app and Windows shortcut…";
+    try {
+      const result = await api("/api/logo", { method: "POST", body: JSON.stringify({ preset, image }) });
+      localStorage.setItem("cros-logo-style", result.preset);
+      showLogoSelection(result.preset);
+      refreshAppIcon(result.icon);
+      $("#logo-note").textContent = "Logo saved. The app, desktop shortcut, and taskbar identity now use this mark.";
+      toast("Cros logo updated", `${result.preset.toUpperCase()} is now your app logo.`);
+    } catch (error) {
+      $("#logo-note").textContent = "The logo was not changed. Choose a PNG, JPG, or WebP up to 6 MB.";
+      toast("Logo could not be changed", error.message, true);
+    } finally {
+      buttons.forEach(button => { button.disabled = false; });
+      $("#custom-logo-file").value = "";
+    }
+  }
+
+  function useCustomLogo(file) {
+    if (!file) return;
+    if (file.size > 6_000_000) { toast("Logo is too large", "Choose an image up to 6 MB.", true); return; }
+    const reader = new FileReader();
+    reader.addEventListener("load", () => changeLogoStyle("custom", String(reader.result || "")));
+    reader.addEventListener("error", () => toast("Logo could not be read", "Choose another image file.", true));
+    reader.readAsDataURL(file);
+  }
+
   function restoreSettings() {
+    setInterfacePreset(localStorage.getItem("cros-interface-preset") || "flux", false);
+    showLogoSelection(localStorage.getItem("cros-logo-style") || "original");
     const accent = localStorage.getItem("cros-accent") || "violet";
     if (accent === "custom") {
       const custom = localStorage.getItem("cros-custom-accent") || "#8566ff";
@@ -1907,6 +2353,8 @@
     setStarBrightness(localStorage.getItem("cros-star-brightness") || 120, false);
     setShape(localStorage.getItem("cros-shape") || "soft", false);
     setColumns(localStorage.getItem("cros-columns") || "auto", false);
+    const storedFit = localStorage.getItem("cros-screen-fit");
+    setScreenFit(storedFit || ((innerWidth <= 1500 || innerHeight <= 850) ? "laptop" : "medium"), false);
   }
 
   function toggleWingDeck(force) {
@@ -1997,12 +2445,28 @@
     $("#cancel-node-edit").addEventListener("click", () => { $("#node-edit-form").hidden = true; });
     $("#neural-map").addEventListener("wheel", zoomGraph, { passive: false });
     $("#name-search-form").addEventListener("submit", searchNames);
+    $$("[data-playbook-tool]").forEach(button => button.addEventListener("click", () => launchTool(button.dataset.playbookTool)));
+    $("#name-provider-picker").addEventListener("click", event => {
+      const button = event.target.closest(".engine-option");
+      if (button) setNameProvider(button.dataset.provider);
+    });
+    $("#name-provider-picker").addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+      const buttons = $$(".engine-option", event.currentTarget);
+      const current = buttons.findIndex(button => button.getAttribute("aria-checked") === "true");
+      const step = ["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1;
+      const next = buttons[(current + step + buttons.length) % buttons.length];
+      event.preventDefault(); setNameProvider(next.dataset.provider); next.focus();
+    });
+    $$('[data-engine-project]').forEach(button => button.addEventListener("click", () => {
+      const info = state.usernameProviders[button.dataset.engineProject];
+      if (info?.project) openResearchUrl(info.project);
+    }));
     $("#session-advanced-toggle").addEventListener("click", () => {
-      const form = $("#session-input-form");
       const log = $("#session-log");
-      form.hidden = !form.hidden;
       log.hidden = !log.hidden;
-      $("#session-advanced-toggle").textContent = form.hidden ? "ADVANCED" : "HIDE ADVANCED";
+      if (!log.hidden) log.open = true;
+      $("#session-advanced-toggle").textContent = log.hidden ? "ENGINE DETAILS" : "HIDE DETAILS";
     });
     $("#image-scan-form").addEventListener("submit", scanImage);
     $("#image-file").addEventListener("change", event => { $("#image-file-label").textContent = event.target.files[0]?.name || "Choose image"; });
@@ -2018,6 +2482,8 @@
     $("#session-input-form").addEventListener("submit", sendSessionInput);
     $("#session-stop").addEventListener("click", () => stopActiveSession(true));
     $("#session-view-map").addEventListener("click", () => openWorkspace("map"));
+    $("#session-social-filter").addEventListener("input", renderSessionSocialResults);
+    $("#session-copy-all").addEventListener("click", copyAllAccountResults);
     $$('[data-workspace-tab]').forEach(button => button.addEventListener("click", () => setWorkspaceView(button.dataset.workspaceTab)));
     $("#workspace-close").addEventListener("click", closeWorkspace);
     $("#workspace-restore").addEventListener("click", () => openWorkspace());
@@ -2080,6 +2546,7 @@
     $("#settings-button").addEventListener("click", () => setSettingsOpen(!$("#settings-drawer").classList.contains("open")));
     $("#search-settings").addEventListener("click", () => setSettingsOpen(true));
     $("#settings-close").addEventListener("click", () => setSettingsOpen(false));
+    $$('[data-settings-jump]').forEach(button => button.addEventListener("click", () => jumpSettings(button.dataset.settingsJump)));
     $("#save-operator-name").addEventListener("click", () => {
       if (applyOperatorName($("#operator-name").value)) $("#welcome-layer").hidden = true;
       else toast("Name required", "Enter a name for your local welcome label.", true);
@@ -2107,14 +2574,19 @@
     $("#star-brightness").addEventListener("input", event => setStarBrightness(event.target.value));
     $$('[data-shape]').forEach(button => button.addEventListener("click", () => setShape(button.dataset.shape)));
     $$('[data-columns]').forEach(button => button.addEventListener("click", () => setColumns(button.dataset.columns)));
+    $$('[data-screen-fit]').forEach(button => button.addEventListener("click", () => setScreenFit(button.dataset.screenFit)));
+    $$('[data-interface-preset]').forEach(button => button.addEventListener("click", () => setInterfacePreset(button.dataset.interfacePreset)));
+    $$('[data-logo-style]').forEach(button => button.addEventListener("click", () => changeLogoStyle(button.dataset.logoStyle)));
+    $("#custom-logo-file").addEventListener("change", event => useCustomLogo(event.target.files?.[0]));
     $("#reset-appearance").addEventListener("click", () => {
-      ["cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns"].forEach(key => localStorage.removeItem(key));
+      ["cros-interface-preset", "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-screen-fit", "cros-logo-style"].forEach(key => localStorage.removeItem(key));
       document.body.classList.remove("no-particles", "no-wings", "no-animations", "compact", "fixed-columns");
       restoreSettings();
+      changeLogoStyle("original");
       renderTools();
       toast("Appearance reset", "The original CROS interface settings are restored.");
     });
-    $$(`#settings-drawer input, #settings-drawer select, #settings-drawer .toggle, #settings-drawer [data-accent], #settings-drawer [data-shape], #settings-drawer [data-columns]`).forEach(control => {
+    $$(`#settings-drawer input, #settings-drawer select, #settings-drawer .toggle, #settings-drawer [data-accent], #settings-drawer [data-shape], #settings-drawer [data-columns], #settings-drawer [data-screen-fit], #settings-drawer [data-interface-preset]`).forEach(control => {
       ["input", "change", "click"].forEach(type => control.addEventListener(type, () => setTimeout(queueAppearanceSave, 0)));
     });
     let clearArmed = false, clearTimer = 0;
@@ -2157,13 +2629,24 @@
       }
     }));
     $$('[data-scroll]').forEach(button => button.addEventListener("click", () => scrollTo({ top: 0, behavior: "smooth" })));
-    $("#terminal-button").addEventListener("click", () => startToolSession("terminal", "main", { title: "Complete Cros menu" }));
     $("#guide-button").addEventListener("click", () => openLearning("", "tutorials"));
     $$('[data-open]').forEach(button => button.addEventListener("click", () => openTarget(button.dataset.open)));
     $("#exit-button").addEventListener("click", async () => {
+      await Promise.allSettled([saveAppearanceNow(), saveWorkspaceNow()]);
       try { await api("/api/shutdown", { method: "POST", body: "{}" }); } catch (_) {}
       window.close();
       setTimeout(() => { if (!document.hidden) location.replace("about:blank"); }, 350);
+    });
+
+    addEventListener("pagehide", () => {
+      saveAppearanceNow();
+      saveWorkspaceNow();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        saveAppearanceNow();
+        saveWorkspaceNow();
+      }
     });
   }
 
@@ -2188,7 +2671,7 @@
     initParticles();
     try {
       await loadWorkspace();
-      await Promise.all([loadCatalog(), loadLearning()]);
+      await Promise.all([loadCatalog(), loadLearning(), loadUsernameProviders()]);
       renderLessonList();
       renderSourceGrid();
       renderPathways();

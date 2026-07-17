@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#090b14">
-  <title>Cros // Intelligence Console</title>
+  <title>Cros // Intelligence Center</title>
   <link rel="icon" type="image/png" href="/app-icon.png?v=2">
   <link rel="shortcut icon" href="/favicon.ico?v=2" sizes="any">
   <link rel="apple-touch-icon" href="/app-icon.png?v=2">
@@ -161,13 +161,31 @@
         <div><span class="section-index">LAB</span><h2 id="workbench-title">In-app investigation lab</h2><p>Research names and inspect images without switching to a terminal. Local analysis stays on this computer.</p></div>
         <span class="pinboard-count">LOCAL-FIRST</span>
       </div>
+      <section class="investigation-launchpad" aria-labelledby="launchpad-title">
+        <header><div><span>START WITH A TARGET</span><h3 id="launchpad-title">Investigation launchpad</h3><p>Choose what you have. Cros opens the right local workflow and keeps every pivot in one workspace.</p></div><b>5 PLAYBOOKS</b></header>
+        <div class="launchpad-grid">
+          <button type="button" data-playbook-tool="osint:1"><i>01</i><span><b>Username</b><small>Accounts and aliases</small></span><em>START →</em></button>
+          <button type="button" data-playbook-tool="osint:3"><i>02</i><span><b>Email</b><small>Public references</small></span><em>START →</em></button>
+          <button type="button" data-playbook-tool="advanced:2"><i>03</i><span><b>Domain</b><small>DNS, TLS, and web</small></span><em>START →</em></button>
+          <button type="button" data-playbook-tool="osint:10"><i>04</i><span><b>IP / Network</b><small>Public network context</small></span><em>START →</em></button>
+          <button type="button" data-playbook-tool="osint:15"><i>05</i><span><b>Image</b><small>Metadata and clues</small></span><em>START →</em></button>
+        </div>
+      </section>
       <div class="workbench-grid">
         <article class="workbench-panel name-lab">
           <div class="lab-head"><span id="name-provider-kicker">01 / BLACKBIRD USERNAME SEARCH</span><h3>Find verified public results</h3><p id="name-provider-description">Run the installed Blackbird engine inside Cros. Results come from live source checks—not guessed profile links.</p><div class="provider-stats" id="name-provider-stats"><b>600+</b><span>public site checks</span><i></i><b>LIVE</b><span>verified responses</span></div></div>
-          <form id="name-search-form" autocomplete="off">
+          <div class="engine-picker" id="name-provider-picker" role="radiogroup" aria-label="Choose username search engine">
+            <button type="button" class="engine-option" data-provider="blackbird" role="radio" aria-checked="true"><span class="engine-mark">B</span><span class="engine-copy"><b>Blackbird</b><small>Broad live search</small></span><em>INCLUDED</em></button>
+            <button type="button" class="engine-option" data-provider="quick" role="radio" aria-checked="false"><span class="engine-mark">C</span><span class="engine-copy"><b>Cros Quick</b><small>Fast profile check</small></span><em>INCLUDED</em></button>
+            <button type="button" class="engine-option" data-provider="sherlock" role="radio" aria-checked="false"><span class="engine-mark">S</span><span class="engine-copy"><b>Sherlock</b><small>Focused network scan</small></span><em>INCLUDED</em></button>
+            <button type="button" class="engine-option" data-provider="maigret" role="radio" aria-checked="false"><span class="engine-mark">M</span><span class="engine-copy"><b>Maigret</b><small>Deep public search</small></span><em>INCLUDED</em></button>
+          </div>
+          <form id="name-search-form" class="name-search-form" autocomplete="off">
+            <input id="name-provider-select" type="hidden" value="blackbird">
             <label><span>USERNAME</span><input id="name-search-query" maxlength="64" pattern="[A-Za-z0-9_.-]{1,64}" placeholder="public handle" required></label>
             <button class="primary-button" type="submit">RUN SELECTED SEARCH <span>→</span></button>
           </form>
+          <div class="engine-bundle-note"><span>LOCAL ENGINE PACK</span><strong>All four choices are included with Cros</strong><i>NO TERMINAL SETUP</i></div>
           <div class="lab-loading" id="name-search-loading" hidden>STARTING BLACKBIRD…</div>
           <div class="name-results" id="name-results" aria-live="polite"><div class="lab-empty"><strong>Live results only</strong><span>Blackbird must be installed in the Cros folder. The search runs inside this panel.</span></div></div>
         </article>
@@ -238,7 +256,6 @@
       <div class="section-heading">
         <div><span class="section-index">02</span><h2 id="tools-title">Tool index</h2><p>Every workflow is one launch away. Use only on systems and data you are authorized to inspect.</p></div>
         <div class="tool-controls">
-          <button class="outline-button" id="terminal-button">ADVANCED TERMINAL MODE</button>
           <button class="outline-button" id="guide-button">LEARNING CENTER</button>
         </div>
       </div>
@@ -324,23 +341,29 @@
     </nav>
     <div class="workspace-dock-content" id="workspace-dock-content">
       <section class="tool-session-panel" id="tool-session-panel" data-workspace-panel="session" hidden aria-labelledby="session-title">
-        <header class="session-head"><div><span>RUNNING INSIDE CROS</span><h3 id="session-title">Tool session</h3></div><div class="session-head-actions"><button type="button" class="text-button" id="session-advanced-toggle">ADVANCED</button><strong id="session-status">READY</strong></div></header>
+        <header class="session-head"><div><span>RUNNING INSIDE CROS</span><h3 id="session-title">Tool session</h3></div><div class="session-head-actions"><button type="button" class="text-button" id="session-advanced-toggle" hidden>DIAGNOSTICS</button><strong id="session-status">READY</strong></div></header>
         <div class="session-progress" id="session-progress" role="progressbar" aria-label="Tool progress" aria-valuetext="Ready"><i></i><b></b></div>
         <div class="session-meta"><span id="session-stage">Choose any tool to start</span><span id="session-time">0.0s</span></div>
         <section class="native-tool-panel" id="native-tool-panel" hidden></section>
+        <section class="session-app-results" id="session-app-results" hidden aria-labelledby="session-app-results-title">
+          <header><div><span>APP RESULTS</span><h4 id="session-app-results-title">Investigation result</h4></div><b id="session-app-results-count">READY</b></header>
+          <div class="session-app-results-body" id="session-app-results-body"></div>
+          <small>Results are formatted by Cros. Technical process details stay hidden unless you explicitly open them.</small>
+        </section>
         <section class="session-socials" id="session-socials" hidden aria-labelledby="session-socials-title">
-          <header><div><span>BLACKBIRD LIVE RETURNS</span><h4 id="session-socials-title">Found social accounts</h4></div><button type="button" id="session-view-map">VIEW MAP</button></header>
+          <header><div><span>LIVE PUBLIC RETURNS</span><h4 id="session-socials-title">Found public accounts</h4></div><div class="session-result-head-actions"><b id="session-social-count">0 RESULTS</b><button type="button" id="session-view-map">VIEW MAP</button></div></header>
+          <div class="session-result-toolbar"><label><span>FILTER RESULTS</span><input id="session-social-filter" type="search" placeholder="Platform or URL"></label><button type="button" id="session-copy-all">COPY ALL</button></div>
           <div id="session-social-list"></div>
-          <small>Blackbird detected these public account pages. Verify profile details before treating separate accounts as the same person.</small>
+          <small>The selected engine returned these public pages. A matching handle is a lead—not proof that separate accounts belong to the same person.</small>
         </section>
         <section class="session-socials session-emails" id="session-emails" hidden aria-labelledby="session-emails-title">
           <header><div><span>PUBLIC EMAIL REFERENCES</span><h4 id="session-emails-title">Found emails</h4></div></header>
           <div id="session-email-list"></div>
           <small>These addresses appeared in live tool output. Cros does not save them beyond this local session.</small>
         </section>
-        <details class="session-log" id="session-log" hidden><summary>LIVE ENGINE LOG</summary><pre class="session-output" id="session-output" aria-live="polite">Tool output will appear here in real time.</pre></details>
+        <details class="session-log" id="session-log" hidden><summary>TECHNICAL DIAGNOSTICS</summary><pre class="session-output" id="session-output" aria-live="polite">Diagnostic details will appear here.</pre></details>
         <form class="session-input-form" id="session-input-form" autocomplete="off" hidden>
-          <label><span>REPLY TO TOOL</span><input id="session-input" placeholder="Type an answer when the tool asks" maxlength="4096"></label>
+          <label><span id="session-input-label">TOOL NEEDS YOUR INPUT</span><input id="session-input" placeholder="Type your answer here" maxlength="4096"></label>
           <button type="submit" class="primary-button">SEND</button>
           <button type="button" class="outline-button" id="session-stop">STOP</button>
         </form>
@@ -366,10 +389,12 @@
   <aside class="settings-drawer" id="settings-drawer" aria-label="Appearance settings" aria-hidden="true" hidden>
     <div class="settings-close-bar"><button class="icon-button" id="settings-close" aria-label="Close settings">×</button></div>
     <div class="drawer-head"><div><span>INTERFACE</span><h2>Appearance</h2></div></div>
-    <section class="drawer-section color-settings"><div class="settings-section-title"><span>COLOR SYSTEM</span><small>Customize the console palette in one place.</small></div><label>INTERFACE COLOR</label><div class="swatches"><button data-accent="violet" class="active" aria-label="Violet"></button><button data-accent="cyan" aria-label="Cyan"></button><button data-accent="red" aria-label="Red"></button><button data-accent="green" aria-label="Green"></button><button data-accent="amber" aria-label="Amber"></button><button data-accent="ice" aria-label="Ice"></button></div><label class="custom-color">CUSTOM ACCENT <input id="custom-accent" type="color" value="#8566ff" aria-label="Choose custom interface color"></label><label class="color-field" for="custom-background"><span>BACKGROUND</span><input id="custom-background" type="color" value="#090b14" aria-label="Choose background color"></label><label class="color-field" for="custom-stars"><span>STARS &amp; POINTER LIGHT</span><input id="custom-stars" type="color" value="#9ca9ff" aria-label="Choose star color"></label></section>
+    <nav class="settings-jump-nav" aria-label="Appearance sections"><button type="button" data-settings-jump="settings-logo">LOGO</button><button type="button" data-settings-jump="settings-themes">THEMES</button><button type="button" data-settings-jump="settings-colors">COLORS</button><button type="button" data-settings-jump="settings-layout">LAYOUT</button><button type="button" data-settings-jump="settings-motion">MOTION</button><button type="button" data-settings-jump="settings-data">DATA</button></nav>
+    <section class="drawer-section interface-presets"><div class="settings-section-title"><span>INTERFACE PRESET</span><small>Choose a complete visual style without changing any tools or saved work.</small></div><div class="preset-options" role="group" aria-label="Interface preset"><button data-interface-preset="flux" class="active"><b>FLUX</b><small>Red intelligence portal</small></button><button data-interface-preset="cros"><b>CROS</b><small>Original console · customizable colors</small></button><button data-interface-preset="arctic"><b>ARCTIC</b><small>Clean ice-blue command</small></button><button data-interface-preset="matrix"><b>MATRIX</b><small>Green terminal operations</small></button><button data-interface-preset="amber"><b>AMBER</b><small>Warm analyst workstation</small></button><button data-interface-preset="mono"><b>MONO</b><small>Minimal graphite interface</small></button><button data-interface-preset="ocean"><b>OCEAN</b><small>Deep-blue investigation deck</small></button><button data-interface-preset="rose"><b>ROSE</b><small>Soft magenta intelligence</small></button><button data-interface-preset="cyber"><b>CYBER</b><small>Electric neon operations</small></button><button data-interface-preset="midnight"><b>MIDNIGHT</b><small>Deep indigo command room</small></button></div></section>
+    <section class="drawer-section logo-settings"><div class="settings-section-title"><span>APP LOGO</span><small>Choose a clear taskbar icon. Every option gets a fresh Windows icon identity.</small></div><div class="logo-options" role="radiogroup" aria-label="Cros app logo"><button type="button" data-logo-style="original" role="radio"><span class="logo-preview original"><img src="/original-logo.png" alt=""></span><b>ORIGINAL</b><small>Current Cros mark</small></button><button type="button" data-logo-style="signal" role="radio"><span class="logo-preview signal">C<i></i></span><b>SIGNAL</b><small>Bright violet</small></button><button type="button" data-logo-style="scope" role="radio"><span class="logo-preview scope">C</span><b>SCOPE</b><small>Cyan targeting ring</small></button><button type="button" data-logo-style="shield" role="radio"><span class="logo-preview shield">C</span><b>SHIELD</b><small>Blue defense mark</small></button><button type="button" data-logo-style="mono" role="radio"><span class="logo-preview mono">C</span><b>MONO</b><small>Clean and readable</small></button></div><label class="custom-logo-button">UPLOAD A CUSTOM LOGO<input id="custom-logo-file" type="file" accept="image/png,image/jpeg,image/webp"></label><small class="logo-note" id="logo-note">Square PNG, JPG, or WebP works best.</small></section>
+    <section class="drawer-section color-settings"><div class="settings-section-title"><span>CROS COLOR SYSTEM</span><small>Fine-tune the original Cros preset with your own palette.</small></div><label>INTERFACE COLOR</label><div class="swatches"><button data-accent="violet" class="active" aria-label="Violet"></button><button data-accent="cyan" aria-label="Cyan"></button><button data-accent="red" aria-label="Red"></button><button data-accent="green" aria-label="Green"></button><button data-accent="amber" aria-label="Amber"></button><button data-accent="ice" aria-label="Ice"></button></div><label class="custom-color">CUSTOM ACCENT <input id="custom-accent" type="color" value="#8566ff" aria-label="Choose custom interface color"></label><label class="color-field" for="custom-background"><span>BACKGROUND</span><input id="custom-background" type="color" value="#090b14" aria-label="Choose background color"></label><label class="color-field" for="custom-stars"><span>STARS &amp; POINTER LIGHT</span><input id="custom-stars" type="color" value="#9ca9ff" aria-label="Choose star color"></label></section>
     <div class="drawer-section"><label for="settings-operator-name">OPERATOR NAME</label><small>Stored locally and used in your welcome label.</small><input id="settings-operator-name" type="text" maxlength="40" placeholder="Your name" autocomplete="name"></div>
     <div class="drawer-section provider-settings"><label>NAME SEARCH PROVIDER</label><small>Blackbird is the built-in local username engine. Results come from its public-source checks and no API key is required.</small><div class="provider-plan"><div><b>BLACKBIRD · LOCAL</b><small>600+ public site checks with verified responses inside Cros.</small></div><span>ACTIVE</span></div></div>
-    <div class="drawer-section api-sources"><div class="settings-section-title"><span>API SOURCES</span><small>Official key pages for optional defensive connectors. Never share keys in GitHub or chat.</small></div><div class="api-source-list"><a class="api-source" href="https://haveibeenpwned.com/API/Key" target="_blank" rel="noreferrer"><span><b>Have I Been Pwned</b><small>Breach notifications · paid API</small></span><em>GET KEY ↗</em></a><a class="api-source" href="https://www.virustotal.com/gui/my-apikey" target="_blank" rel="noreferrer"><span><b>VirusTotal</b><small>Free public API quota · premium plans available</small></span><em>GET KEY ↗</em></a><a class="api-source" href="https://www.abuseipdb.com/account/api" target="_blank" rel="noreferrer"><span><b>AbuseIPDB</b><small>Free quota · IP reputation checks</small></span><em>GET KEY ↗</em></a><a class="api-source" href="https://urlscan.io/user/" target="_blank" rel="noreferrer"><span><b>urlscan.io</b><small>Free quota · URL and page analysis</small></span><em>GET KEY ↗</em></a></div></div>
     <div class="drawer-section setting-row"><div><label>PARTICLE FIELD</label><small>Animated local signal map</small></div><button class="toggle active" id="particle-toggle" aria-pressed="true"><i></i></button></div>
     <div class="drawer-section setting-row"><div><label>ANIMATED WINGS</label><small>Reactive centerpiece wings</small></div><button class="toggle active" id="wing-toggle" aria-pressed="true"><i></i></button></div>
     <div class="drawer-section setting-row"><div><label>COMPACT CARDS</label><small>Fit more tools on screen</small></div><button class="toggle" id="compact-toggle" aria-pressed="false"><i></i></button></div>
@@ -380,6 +405,7 @@
     <div class="drawer-section range-setting"><div><label for="particle-density">LIGHT DENSITY</label><output id="particle-density-output">100%</output></div><input id="particle-density" type="range" min="20" max="180" value="100"></div>
     <div class="drawer-section range-setting"><div><label for="light-smoothing">LIGHT SMOOTHNESS</label><output id="light-smoothing-output">75%</output></div><input id="light-smoothing" type="range" min="20" max="100" value="75"></div>
     <div class="drawer-section range-setting"><div><label for="star-brightness">STAR BRIGHTNESS</label><output id="star-brightness-output">120%</output></div><input id="star-brightness" type="range" min="30" max="240" value="120"></div>
+    <div class="drawer-section screen-fit-section"><label>SCREEN SIZE</label><small>Keep text comfortable while fitting the interface to your display—no browser zoom or distorted panels.</small><div class="screen-fit-options" role="radiogroup" aria-label="Screen size layout"><button type="button" data-screen-fit="laptop" role="radio"><b>LAPTOP</b><span>Larger text, fewer columns</span></button><button type="button" data-screen-fit="medium" role="radio"><b>MEDIUM</b><span>Balanced everyday layout</span></button><button type="button" data-screen-fit="large" role="radio"><b>LARGE</b><span>Roomy desktop layout</span></button></div></div>
     <div class="drawer-section"><label>CARD SHAPE</label><div class="shape-options" role="group" aria-label="Card corner shape"><button data-shape="soft" class="active">SOFT</button><button data-shape="sharp">SHARP</button><button data-shape="round">ROUND</button></div></div>
     <div class="drawer-section"><label>TOOL GRID</label><small>Choose the desktop card density. Smaller screens stay responsive.</small><div class="column-options" role="group" aria-label="Tool card columns"><button data-columns="auto" class="active">AUTO</button><button data-columns="3">3 COL</button><button data-columns="4">4 COL</button><button data-columns="5">5 COL</button></div></div>
     <div class="drawer-section"><button class="reset-appearance" id="reset-appearance">RESET APPEARANCE</button></div>
@@ -400,7 +426,7 @@
   <div class="welcome-layer" id="welcome-layer" hidden>
     <section class="welcome-panel" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
       <span class="section-index">LOCAL PROFILE</span>
-      <h2 id="welcome-title">Make the console yours</h2>
+      <h2 id="welcome-title">Make the workspace yours</h2>
       <p>Your name is stored only on this computer and is used for the welcome label. You can change it later in Settings.</p>
       <label for="operator-name">YOUR NAME</label>
       <input id="operator-name" maxlength="40" autocomplete="name" placeholder="e.g. Alex">

@@ -6,6 +6,32 @@ The ChatGPT-style Investigation Workspace is a collapsible, resizable panel for 
 
 ## Install and start on Windows
 
+### Fast PowerShell commands
+
+Open **PowerShell** and use the command you need.
+
+Download and install the newest version:
+
+```powershell
+irm https://raw.githubusercontent.com/cros20471/cros-intelligence-console/main/install_cros.ps1 | iex
+```
+
+Update an existing installation without deleting local notes or settings:
+
+```powershell
+$u=Get-ChildItem ([Environment]::GetFolderPath('MyDocuments')),$HOME -Filter update_cros.ps1 -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if(!$u){throw 'Cros was not found'}; powershell -NoProfile -ExecutionPolicy Bypass -File $u.FullName
+```
+
+Delete Cros and its local data (asks you to type `DELETE` first):
+
+```powershell
+$u=Get-ChildItem ([Environment]::GetFolderPath('MyDocuments')),$HOME -Filter uninstall_cros.ps1 -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if(!$u){throw 'Cros was not found'}; powershell -NoProfile -ExecutionPolicy Bypass -File $u.FullName
+```
+
+To keep a desktop backup of local preferences and workspace data while uninstalling, add `-KeepLocalData` to the final command. Never run the delete command from inside a folder containing unrelated files.
+
+For a guided walkthrough, follow the [Quick Start Tutorial](QUICKSTART.md).
+
 1. Install Python 3.11 or newer and Git.
 2. Clone this repository and open its folder.
 3. Use the PowerShell block below; it installs Cros dependencies and the Blackbird account-search engine dependencies.

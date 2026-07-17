@@ -82,9 +82,9 @@ function Stop-CrosProcesses {
 }
 
 Stop-CrosProcesses
-& $pythonExe @pythonArgs -m pip install --disable-pip-version-check --target $target --upgrade @packages
+& $pythonExe @pythonArgs -m pip install --disable-pip-version-check --target $target --upgrade @packages "sherlock-project==0.16.0" "maigret==0.6.3"
 if ($LASTEXITCODE -ne 0) {
-  throw "Blackbird dependencies could not be installed in the new staging folder. Close Cros and run the updater again."
+  throw "The Cros account-search engine pack could not be installed. Close Cros and run the updater again."
 }
 Set-Content -LiteralPath (Join-Path $PSScriptRoot "engine_deps\active_runtime.txt") -Value $targetName -Encoding ascii
 Start-Process -FilePath (Join-Path $PSScriptRoot "start_osint_tool.bat") -WorkingDirectory $PSScriptRoot

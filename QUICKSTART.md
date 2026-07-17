@@ -1,5 +1,25 @@
 # Quick Start Tutorial
 
+## Fast commands
+
+Download/install:
+
+```powershell
+irm https://raw.githubusercontent.com/cros20471/cros-intelligence-console/main/install_cros.ps1 | iex
+```
+
+Update:
+
+```powershell
+$u=Get-ChildItem ([Environment]::GetFolderPath('MyDocuments')),$HOME -Filter update_cros.ps1 -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if(!$u){throw 'Cros was not found'}; powershell -NoProfile -ExecutionPolicy Bypass -File $u.FullName
+```
+
+Delete (requires typing `DELETE`):
+
+```powershell
+$u=Get-ChildItem ([Environment]::GetFolderPath('MyDocuments')),$HOME -Filter uninstall_cros.ps1 -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1; if(!$u){throw 'Cros was not found'}; powershell -NoProfile -ExecutionPolicy Bypass -File $u.FullName
+```
+
 ## 1. Install Cros
 
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/). Enable **Add Python to PATH** during setup.

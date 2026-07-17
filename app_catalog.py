@@ -43,7 +43,7 @@ CATALOG += _rows("osint", "Network Intelligence", [
 CATALOG += _rows("osint", "Media and Workspace", [
     ("15", "Photo Intelligence", "Read local metadata and prepare reverse-image research.", "local"),
     ("16", "Hash Generator", "Create a local cryptographic hash from text.", "local"),
-    ("17", "Console Appearance", "Customize terminal colors, borders, titles, and wings.", "local"),
+    ("17", "Interface Appearance", "Customize app colors, borders, titles, and wings.", "local"),
     ("18", "About Cros", "Review scope, privacy boundaries, and responsible-use notes.", "local"),
 ])
 

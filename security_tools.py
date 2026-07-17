@@ -1106,11 +1106,10 @@ def temp_risk_scan() -> None:
     pause()
 
 
-def wifi_security_audit() -> None:
-    code, output, error = loading("Reading saved Wi-Fi profiles", lambda: command(
-        ["netsh", "wlan", "show", "profiles"], 45))
+def collect_wifi_security() -> dict:
+    code, output, error = command(["netsh", "wlan", "show", "profiles"], 45)
     if code:
-        print(paint(f"Wi-Fi profile audit unavailable: {error or output}", "yellow")); pause(); return
+        raise RuntimeError(error or output or "Wi-Fi profile audit unavailable")
     profiles = []
     for line in output.splitlines():
         match = re.search(r"All User Profile\s*:\s*(.+)$", line, re.I)
@@ -1119,7 +1118,8 @@ def wifi_security_audit() -> None:
     for name in profiles[:100]:
         p_code, detail, _ = command(["netsh", "wlan", "show", "profile", f"name={name}"], 30)
         if p_code:
-            rows.append([name, "Unavailable", "Unavailable", "Not displayed", "Details unavailable"])
+            rows.append({"profile": name, "authentication": "Unavailable", "cipher": "Unavailable",
+                         "security_key": "Not displayed", "review": "Details unavailable", "status": "unknown"})
             continue
         def field(label: str) -> str:
             match = re.search(rf"^\s*{re.escape(label)}\s*:\s*(.+)$", detail, re.I | re.M)
@@ -1131,9 +1131,22 @@ def wifi_security_audit() -> None:
             review = "Details require Administrator"
         else:
             review = "REVIEW - open network" if authentication.lower() == "open" else "Protected / verify"
-        rows.append([name, authentication, cipher, key_present, review])
+        status = "review" if review.startswith("REVIEW") else "unknown" if "require" in review.lower() else "protected"
+        rows.append({"profile": name, "authentication": authentication, "cipher": cipher,
+                     "security_key": key_present, "review": review, "status": status})
+    return {"profiles": rows, "count": len(rows),
+            "note": "Wi-Fi passwords are never requested or displayed."}
+
+
+def wifi_security_audit() -> None:
+    try:
+        result = loading("Reading saved Wi-Fi profiles", collect_wifi_security)
+    except RuntimeError as exc:
+        print(paint(f"Wi-Fi profile audit unavailable: {exc}", "yellow")); pause(); return
+    rows = [[item["profile"], item["authentication"], item["cipher"], item["security_key"], item["review"]]
+            for item in result["profiles"]]
     table("SAVED WI-FI SECURITY", ["Profile", "Authentication", "Cipher", "Security key", "Review"], rows, 100)
-    if not profiles: print("No saved Wi-Fi profiles were found, or Windows returned localized field names.")
+    if not rows: print("No saved Wi-Fi profiles were found, or Windows returned localized field names.")
     print("Wi-Fi passwords are never requested or displayed.")
     pause()
 

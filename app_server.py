@@ -63,6 +63,7 @@ except ssl.SSLError:
     pass
 APP_ICON_FILE = WEB_DIR / "cros.ico"
 APP_LOGO_FILE = WEB_DIR / "cros-logo.png"
+ORIGINAL_LOGO_FILE = WEB_DIR / "cros-logo-original.png"
 APP_ICON_HANDLES: list[int] = []
 TOOL_SESSIONS: dict[str, dict] = {}
 TOOL_SESSIONS_LOCK = threading.Lock()
@@ -139,12 +140,10 @@ def blackbird_social_results(output: str, username: str) -> list[dict[str, str]]
             continue
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             continue
-        # Prefer Blackbird's current site catalog so generic URLs (for
-        # example GitHub or a documentation page) do not become social leads.
-        # If the catalog is unavailable, keep the live labeled result rather
-        # than making the whole in-app account search appear empty.
-        if known_social_names and platform.lower() not in known_social_names:
-            continue
+        # A labeled Blackbird hit is already a positive engine result. Keep it
+        # even when Blackbird's category metadata is stale or classifies the
+        # service as something other than "social". The old category gate
+        # silently hid valid live returns from the visible Cros result cards.
         key = (platform.lower(), url.lower())
         if key in seen:
             continue
@@ -273,10 +272,10 @@ def write_workspace_state(value: object) -> dict:
 
 
 APPEARANCE_KEYS = {
-    "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles",
+    "cros-interface-preset", "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles",
     "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density",
     "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose",
-    "cros-operator-name",
+    "cros-operator-name", "cros-screen-fit", "cros-logo-style",
 }
 HEX_APPEARANCE_KEYS = {"cros-custom-accent", "cros-background", "cros-star-color"}
 
@@ -293,9 +292,15 @@ def clean_appearance_state(value: object) -> dict[str, str]:
             continue
         if key == "cros-accent" and text not in {"violet", "cyan", "red", "green", "amber", "ice", "custom"}:
             continue
+        if key == "cros-interface-preset" and text not in {"flux", "cros", "arctic", "matrix", "amber", "mono", "ocean", "rose", "cyber", "midnight"}:
+            continue
         if key in {"cros-shape"} and text not in {"soft", "sharp", "round"}:
             continue
         if key == "cros-columns" and text not in {"auto", "3", "4", "5"}:
+            continue
+        if key == "cros-screen-fit" and text not in {"laptop", "medium", "large"}:
+            continue
+        if key == "cros-logo-style" and text not in {"original", "signal", "scope", "shield", "mono", "custom"}:
             continue
         if key == "cros-rail-autoclose" and text not in {"0", "3000", "5000", "10000"}:
             continue
@@ -432,7 +437,9 @@ ALLOWED_WEB_HOSTS = {
     "google.com", "www.google.com", "lens.google.com", "bing.com", "www.bing.com", "duckduckgo.com",
     "github.com", "reddit.com", "www.reddit.com", "x.com", "instagram.com", "www.instagram.com",
     "tiktok.com", "www.tiktok.com", "youtube.com", "www.youtube.com", "yandex.com", "yandex.ru",
-    "haveibeenpwned.com", "www.haveibeenpwned.com",
+    "haveibeenpwned.com", "www.haveibeenpwned.com", "web.archive.org",
+    "openstreetmap.org", "www.openstreetmap.org", "virustotal.com", "www.virustotal.com",
+    "bazaar.abuse.ch",
 }
 
 
@@ -667,8 +674,142 @@ def render_logo_icon_bytes() -> bytes | None:
         return None
 
 
+def versioned_app_icon_path() -> Path:
+    """Use a content-based filename so Windows cannot reuse a stale taskbar icon cache entry."""
+    try:
+        digest = hashlib.sha256(APP_LOGO_FILE.read_bytes()).hexdigest()[:12]
+    except OSError:
+        digest = "fallback"
+    return WEB_DIR / f"cros-icon-{digest}.ico"
+
+
+LOGO_PRESETS = {"original", "signal", "scope", "shield", "mono"}
+
+
+def _logo_font(size: int):
+    from PIL import ImageFont
+
+    for path in (
+        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "segoeuib.ttf",
+        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arialbd.ttf",
+    ):
+        try:
+            return ImageFont.truetype(str(path), size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def render_logo_preset(preset: str) -> bytes:
+    """Render a crisp, high-contrast square logo that survives 24px taskbar sizing."""
+    from io import BytesIO
+    from PIL import Image, ImageDraw
+
+    size = 512
+    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    palettes = {
+        "signal": ((31, 22, 62, 255), (139, 98, 255, 255), (255, 255, 255, 255)),
+        "scope": ((5, 22, 31, 255), (38, 220, 233, 255), (238, 255, 255, 255)),
+        "shield": ((11, 20, 43, 255), (83, 128, 255, 255), (255, 255, 255, 255)),
+        "mono": ((235, 238, 244, 255), (75, 83, 99, 255), (12, 15, 22, 255)),
+    }
+    background, accent, foreground = palettes[preset]
+    draw.rounded_rectangle((24, 24, 488, 488), radius=112, fill=background, outline=accent, width=22)
+
+    if preset == "scope":
+        draw.ellipse((102, 102, 410, 410), outline=accent, width=18)
+        draw.ellipse((150, 150, 362, 362), outline=(*accent[:3], 120), width=8)
+        for line in ((256, 70, 256, 142), (256, 370, 256, 442), (70, 256, 142, 256), (370, 256, 442, 256)):
+            draw.line(line, fill=accent, width=18)
+    elif preset == "shield":
+        shield = [(256, 91), (398, 150), (376, 337), (256, 429), (136, 337), (114, 150)]
+        draw.polygon(shield, fill=(18, 31, 61, 255), outline=accent, width=22)
+    elif preset == "signal":
+        draw.arc((100, 100, 412, 412), 42, 318, fill=accent, width=28)
+        draw.ellipse((365, 87, 417, 139), fill=(255, 107, 185, 255))
+
+    font = _logo_font(244 if preset != "shield" else 218)
+    box = draw.textbbox((0, 0), "C", font=font)
+    x = (size - (box[2] - box[0])) / 2 - box[0]
+    y = (size - (box[3] - box[1])) / 2 - box[1] - 7
+    draw.text((x, y), "C", font=font, fill=foreground)
+
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def _normalize_custom_logo(data_url: str) -> bytes:
+    from io import BytesIO
+    from PIL import Image
+
+    match = re.fullmatch(r"data:image/(?:png|jpeg|webp);base64,([A-Za-z0-9+/=\r\n]+)", data_url)
+    if not match:
+        raise ValueError("Choose a PNG, JPG, or WebP image")
+    try:
+        raw = base64.b64decode(match.group(1), validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("The custom logo file is invalid") from exc
+    if len(raw) > 6_000_000:
+        raise ValueError("Custom logos must be 6 MB or smaller")
+    try:
+        with Image.open(BytesIO(raw)) as source:
+            source.load()
+            image = source.convert("RGBA")
+    except (OSError, ValueError) as exc:
+        raise ValueError("The custom logo image could not be read") from exc
+    side = min(image.size)
+    left, top = (image.width - side) // 2, (image.height - side) // 2
+    image = image.crop((left, top, left + side, top + side)).resize((512, 512), Image.Resampling.LANCZOS)
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def _refresh_cros_shortcut() -> None:
+    try:
+        install_desktop_shortcut()
+    except OSError:
+        pass
+
+
+def apply_logo_choice(preset: str, custom_data_url: str = "") -> dict[str, object]:
+    preset = str(preset).strip().lower()
+    if preset not in LOGO_PRESETS | {"custom"}:
+        raise ValueError("Unknown logo option")
+    if not ORIGINAL_LOGO_FILE.is_file() and APP_LOGO_FILE.is_file():
+        shutil.copy2(APP_LOGO_FILE, ORIGINAL_LOGO_FILE)
+    if preset == "original":
+        if not ORIGINAL_LOGO_FILE.is_file():
+            raise ValueError("The original Cros logo is missing")
+        logo_bytes = ORIGINAL_LOGO_FILE.read_bytes()
+    elif preset == "custom":
+        logo_bytes = _normalize_custom_logo(custom_data_url)
+    else:
+        logo_bytes = render_logo_preset(preset)
+    temporary = APP_LOGO_FILE.with_suffix(".tmp")
+    temporary.write_bytes(logo_bytes)
+    os.replace(temporary, APP_LOGO_FILE)
+    rendered = render_logo_icon_bytes()
+    if rendered:
+        APP_ICON_FILE.write_bytes(rendered)
+        versioned_app_icon_path().write_bytes(rendered)
+    saved = read_appearance_state()
+    saved["cros-logo-style"] = preset
+    write_appearance_state(saved)
+    icon_path = ensure_app_icon()
+    if icon_path:
+        threading.Thread(target=apply_cros_window_icon, args=(icon_path,), daemon=True).start()
+    threading.Thread(target=_refresh_cros_shortcut, daemon=True).start()
+    version = APP_LOGO_FILE.stat().st_mtime_ns
+    return {"ok": True, "preset": preset, "icon": f"/app-icon.png?v={version}"}
+
+
 def ensure_app_icon() -> Path | None:
     try:
+        if APP_LOGO_FILE.is_file() and not ORIGINAL_LOGO_FILE.is_file():
+            shutil.copy2(APP_LOGO_FILE, ORIGINAL_LOGO_FILE)
         logo_is_newer = (
             APP_LOGO_FILE.is_file()
             and (
@@ -682,7 +823,17 @@ def ensure_app_icon() -> Path | None:
                 APP_ICON_FILE.write_bytes(rendered)
         if not APP_ICON_FILE.is_file():
             APP_ICON_FILE.write_bytes(fallback_icon_bytes())
-        return APP_ICON_FILE
+        selected_icon = versioned_app_icon_path()
+        if not selected_icon.is_file():
+            rendered = render_logo_icon_bytes()
+            selected_icon.write_bytes(rendered or APP_ICON_FILE.read_bytes())
+        old_icons = sorted(WEB_DIR.glob("cros-icon-*.ico"), key=lambda path: path.stat().st_mtime_ns, reverse=True)
+        for old_icon in old_icons[8:]:
+            try:
+                old_icon.unlink()
+            except OSError:
+                pass
+        return selected_icon
     except OSError:
         return None
 
@@ -809,7 +960,7 @@ def apply_cros_window_icon(icon_path: Path) -> None:
                 if length:
                     buffer = ctypes.create_unicode_buffer(length + 1)
                     user32.GetWindowTextW(hwnd, buffer, length + 1)
-                    if "Cros // Intelligence Console" in buffer.value:
+                    if buffer.value.startswith("Cros // Intelligence Center"):
                         matches.append(int(hwnd))
                 return True
 
@@ -877,6 +1028,25 @@ def _read_tool_session(session_id: str) -> None:
                 session["returncode"] = process.returncode
 
 
+def _pending_session_prompt(output: str, done: bool) -> str:
+    """Return a short terminal prompt when an embedded tool is awaiting input."""
+    if done or not output or output.endswith(("\n", "\r")):
+        return ""
+    line = output.replace("\r", "\n").split("\n")[-1].strip()
+    if not line or len(line) > 240:
+        return ""
+    lowered = line.lower()
+    prompt_markers = (
+        line.endswith((":", ">", "?", "]:")),
+        "select a " in lowered,
+        "enter " in lowered,
+        "path " in lowered,
+        "show " in lowered and "[" in line,
+        "open " in lowered and "[" in line,
+    )
+    return line[-180:] if any(prompt_markers) else ""
+
+
 def start_tool_session(category: str, tool_id: str, *, username: str = "") -> dict:
     category = str(category).lower().strip()
     tool_id = str(tool_id).strip()
@@ -918,6 +1088,191 @@ def start_tool_session(category: str, tool_id: str, *, username: str = "") -> di
     return {"id": session_id, "category": category, "tool_id": tool_id}
 
 
+USERNAME_PROVIDER_PROJECTS = {
+    "sherlock": "https://github.com/sherlock-project/sherlock",
+    "maigret": "https://github.com/soxoj/maigret",
+}
+
+
+def _username_provider_command(provider: str, username: str) -> list[str] | None:
+    runtime = __import__("osint_tool").engine_dependency_path()
+    if provider == "sherlock":
+        if (runtime / "sherlock_project" / "__main__.py").is_file():
+            return [console_python(), "-u", "-m", "sherlock_project", username,
+                    "--print-found", "--no-color", "--no-txt"]
+        executable = shutil.which("sherlock")
+        return [executable, username, "--print-found", "--no-color"] if executable else None
+    if provider == "maigret":
+        if (runtime / "maigret" / "__main__.py").is_file():
+            return [console_python(), "-u", "-m", "maigret", username,
+                    "--no-color", "--no-progressbar", "--no-autoupdate"]
+        executable = shutil.which("maigret")
+        if not executable:
+            standalone = Path.home() / "Downloads" / "maigret_standalone.exe"
+            executable = str(standalone) if standalone.is_file() else None
+        return [executable, username] if executable else None
+    return None
+
+
+def username_provider_status() -> dict:
+    providers = [
+        {"id": "blackbird", "name": "Blackbird", "available": bool(__import__("osint_tool").find_blackbird()),
+         "description": "Broad built-in public account search.", "project": "https://github.com/p1ngul1n0/blackbird"},
+        {"id": "quick", "name": "Cros Quick Check", "available": True,
+         "description": "Fast public GitHub and GitLab check with no extra install.", "project": ""},
+    ]
+    for provider, project in USERNAME_PROVIDER_PROJECTS.items():
+        providers.append({"id": provider, "name": provider.title(),
+                          "available": _username_provider_command(provider, "status-check") is not None,
+                          "description": ("Included focused checks across 400+ public networks." if provider == "sherlock" else
+                                          "Included deep username search with broad public-site coverage."),
+                          "project": project})
+    return {"providers": providers}
+
+
+def local_diagnostics_payload() -> dict:
+    providers = username_provider_status()["providers"]
+    ready = sum(1 for item in providers if item.get("available"))
+    return {
+        "checks": [
+            {"label": "Desktop app", "value": "Running locally", "status": "ready"},
+            {"label": "Python runtime", "value": platform.python_version(), "status": "ready"},
+            {"label": "Username engines", "value": f"{ready} of {len(providers)} ready", "status": "ready" if ready == len(providers) else "review"},
+            {"label": "Local data folder", "value": str(APP_DIR), "status": "ready"},
+            {"label": "Network binding", "value": "127.0.0.1 only", "status": "ready"},
+        ],
+        "providers": providers,
+    }
+
+
+def start_username_provider_session(provider: str, username: str) -> dict:
+    provider = str(provider).lower().strip()
+    username = str(username).strip().lstrip("@")[:64]
+    if provider not in USERNAME_PROVIDER_PROJECTS:
+        raise ValueError("Choose a supported local username provider")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", username):
+        raise ValueError("Use 1–64 letters, numbers, dots, underscores, or hyphens")
+    command = _username_provider_command(provider, username)
+    if not command:
+        raise ValueError(f"{provider.title()} is missing from the Cros engine pack. Run the Cros updater to repair it.")
+    env = os.environ.copy()
+    env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "COLUMNS": "300"})
+    runtime = __import__("osint_tool").engine_dependency_path()
+    existing_path = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(runtime) + (os.pathsep + existing_path if existing_path else "")
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    process = subprocess.Popen(command, cwd=str(APP_DIR), env=env, creationflags=flags, close_fds=True,
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
+    session_id = uuid.uuid4().hex
+    session = {"id": session_id, "category": "username-provider", "tool_id": provider, "process": process,
+               "output": "", "base_offset": 0, "started": time.monotonic(), "ended": None,
+               "returncode": None, "stage": f"Starting {provider.title()}", "username": username}
+    with TOOL_SESSIONS_LOCK:
+        TOOL_SESSIONS[session_id] = session
+    threading.Thread(target=_read_tool_session, args=(session_id,), daemon=True).start()
+    return {"id": session_id, "category": "username-provider", "tool_id": provider}
+
+
+def generic_username_social_results(output: str, username: str) -> list[dict]:
+    results = []
+    seen = set()
+    for raw_url in re.findall(r"https?://[^\s\]\[<>()\"']+", output):
+        url = raw_url.rstrip(".,;:")
+        parsed = urllib.parse.urlsplit(url)
+        host = (parsed.hostname or "").lower().removeprefix("www.")
+        if parsed.scheme not in {"http", "https"} or not host or url in seen:
+            continue
+        seen.add(url)
+        platform_name = host.split(".")[0].replace("-", " ").title()
+        results.append({"platform": platform_name, "url": url, "username": username})
+        if len(results) >= 150:
+            break
+    return results
+
+
+SESSION_URL_RE = re.compile(r"https?://[^\s\]\[<>()\"']+")
+SESSION_TABLE_RULE_RE = re.compile(r"^[\s\-_=+|:.]+$")
+SESSION_NOISE_RE = re.compile(
+    r"^(?:press enter|external research link|starting(?:\s|$)|checking for updates|sites list is up to date|"
+    r"complete$|tool cancelled|earlier output was trimmed)", re.IGNORECASE,
+)
+
+
+def _session_link_label(host: str) -> str:
+    labels = {
+        "web.archive.org": "Open website history",
+        "haveibeenpwned.com": "Open Have I Been Pwned",
+        "www.haveibeenpwned.com": "Open Have I Been Pwned",
+        "www.google.com": "Open Google research",
+        "google.com": "Open Google research",
+        "github.com": "Open GitHub result",
+    }
+    if host in labels:
+        return labels[host]
+    name = host.removeprefix("www.").split(".")[0].replace("-", " ").title()
+    return f"Open {name or 'web'} result"
+
+
+def session_display_results(output: str) -> dict:
+    """Turn console-oriented tool text into safe, app-friendly result data."""
+    clean = ANSI_ESCAPE.sub("", str(output or "")).replace("\r", "\n")
+    links: list[dict] = []
+    facts: list[dict] = []
+    findings: list[str] = []
+    seen_urls: set[str] = set()
+    seen_text: set[str] = set()
+
+    for raw_url in SESSION_URL_RE.findall(clean):
+        url = raw_url.rstrip(".,;:!?)\"'")
+        parsed = urllib.parse.urlsplit(url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in {"http", "https"} or not host or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        links.append({"label": _session_link_label(host), "url": url, "host": host.removeprefix("www.")})
+        if len(links) >= 24:
+            break
+
+    for raw_line in clean.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = "".join(" | " if 0x2500 <= ord(char) <= 0x257F else char for char in line)
+        while line and not (line[0].isalnum() or line[0] in "[({"):
+            line = line[1:].lstrip()
+        line = line.strip("| ").strip()
+        if not line or not any(char.isalnum() for char in line) or SESSION_TABLE_RULE_RE.fullmatch(line) or SESSION_NOISE_RE.match(line):
+            continue
+        if SESSION_URL_RE.search(line):
+            continue
+        if line.endswith(":") and len(line) <= 90:
+            continue
+        line = re.sub(r"\s*\|\s*", " - ", line)
+        line = re.sub(r"\s{2,}", " ", line).strip()
+        if not line or len(line) > 500:
+            continue
+        match = re.match(r"^([^:]{2,48}):\s+(.+)$", line)
+        if match:
+            label, value = match.group(1).strip(), match.group(2).strip()
+            if value.startswith("+") and value.endswith("+") and "---" in value:
+                continue
+            key = f"{label.lower()}\0{value.lower()}"
+            if key not in seen_text:
+                seen_text.add(key)
+                facts.append({"label": label[:48], "value": value[:500]})
+            if len(facts) >= 24:
+                break
+            continue
+        key = line.lower()
+        if key not in seen_text:
+            seen_text.add(key)
+            findings.append(line[:500])
+        if len(findings) >= 24:
+            break
+
+    return {"links": links, "facts": facts, "findings": findings}
+
+
 def tool_session_payload(session_id: str, offset: int = 0) -> dict:
     with TOOL_SESSIONS_LOCK:
         session = TOOL_SESSIONS.get(session_id)
@@ -935,14 +1290,44 @@ def tool_session_payload(session_id: str, offset: int = 0) -> dict:
         stage = session["stage"]
         full_output = session["output"]
         username = session.get("username", "")
-    social_results = blackbird_social_results(full_output, username)
+        category = session.get("category", "")
+    prompt = _pending_session_prompt(full_output, done)
+    social_results = (generic_username_social_results(full_output, username) if category == "username-provider"
+                      else blackbird_social_results(full_output, username))
     email_results = blackbird_email_results(full_output)
     if int(offset) < base_offset:
         output = "[Earlier output was trimmed]\n" + output
     return {"id": session_id, "output": output, "next_offset": next_offset, "done": done,
             "returncode": returncode, "elapsed_ms": int(elapsed * 1000),
-            "stage": (("Complete" if returncode == 0 else "Stopped with an error") if done else stage)[:180],
-            "social_results": social_results, "email_results": email_results}
+            "stage": (("Complete" if returncode == 0 else "Stopped with an error") if done else
+                      ("Waiting for your input" if prompt else stage))[:180],
+            "waiting_for_input": bool(prompt), "prompt": prompt,
+            "social_results": social_results, "email_results": email_results,
+            "display_results": session_display_results(full_output)}
+
+
+def open_session_result(session_id: object, raw_url: object) -> None:
+    """Open only an exact public URL returned by the selected live session."""
+    session_key = _short_text(session_id, 64)
+    url = _short_text(raw_url, 2048)
+    with TOOL_SESSIONS_LOCK:
+        session = TOOL_SESSIONS.get(session_key)
+        if not session:
+            raise ValueError("That tool session is no longer available")
+        output = session.get("output", "")
+        username = session.get("username", "")
+        category = session.get("category", "")
+    results = (generic_username_social_results(output, username) if category == "username-provider"
+               else blackbird_social_results(output, username))
+    allowed_urls = {item.get("url") for item in results}
+    allowed_urls.update(item.get("url") for item in session_display_results(output)["links"])
+    if url not in allowed_urls:
+        raise ValueError("That link was not returned by this live session")
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("That result is not a valid public web link")
+    if not webbrowser.open(url):
+        raise OSError("Windows could not open that result")
 
 
 def send_tool_session_input(session_id: str, value: object) -> None:
@@ -1049,12 +1434,17 @@ def open_local_app(url: str) -> None:
 
 
 def install_desktop_shortcut() -> None:
-    """Create a local Windows shortcut without sending the path anywhere."""
+    """Create a GUI-only local shortcut without flashing a console window."""
     if os.name != "nt":
         raise OSError("Desktop shortcuts are supported on Windows only")
-    launcher = APP_DIR / "start_osint_tool.bat"
-    if not launcher.is_file():
-        raise OSError("The Cros launcher is missing")
+    executable = Path(sys.executable)
+    gui_python = executable if executable.name.lower() == "pythonw.exe" else executable.with_name("pythonw.exe")
+    bundled_gui = APP_DIR / "python" / "pythonw.exe"
+    if bundled_gui.is_file():
+        gui_python = bundled_gui
+    if not gui_python.is_file():
+        raise OSError("The windowed Python launcher is missing")
+    shortcut_icon = ensure_app_icon() or APP_ICON_FILE
     destinations = [Path.home() / "Desktop"]
     one_drive_desktop = Path(os.environ.get("OneDrive", "")) / "Desktop"
     if one_drive_desktop not in destinations:
@@ -1074,13 +1464,14 @@ def install_desktop_shortcut() -> None:
     for desktop in destinations:
         try:
             desktop.mkdir(parents=True, exist_ok=True)
-            shortcut = desktop / "Cros Intelligence Center - Private Dev.lnk"
+            shortcut = desktop / "Cros Intelligence Center.lnk"
             script = (
                 "$shell=New-Object -ComObject WScript.Shell;"
                 f"$shortcut=$shell.CreateShortcut('{ps_quote(shortcut)}');"
-                f"$shortcut.TargetPath='{ps_quote(launcher)}';"
+                f"$shortcut.TargetPath='{ps_quote(gui_python)}';"
+                f"$shortcut.Arguments='\"{ps_quote(APP_DIR / 'app_server.py')}\"';"
                 f"$shortcut.WorkingDirectory='{ps_quote(APP_DIR)}';"
-                f"$shortcut.IconLocation='{ps_quote(APP_ICON_FILE)},0';"
+                f"$shortcut.IconLocation='{ps_quote(shortcut_icon)},0';"
                 "$shortcut.Description='Cros Intelligence Center';$shortcut.Save()"
             )
             result = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
@@ -1159,9 +1550,23 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             self.json_response(read_appearance_state())
             return
+        if route == "/api/logo":
+            if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
+            saved = read_appearance_state()
+            self.json_response({"preset": saved.get("cros-logo-style", "original"),
+                                "icon": f"/app-icon.png?v={APP_LOGO_FILE.stat().st_mtime_ns if APP_LOGO_FILE.is_file() else 0}"})
+            return
         if route == "/api/provider-keys":
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
             self.json_response(read_provider_keys())
+            return
+        if route == "/api/username-providers":
+            if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
+            self.json_response(username_provider_status())
+            return
+        if route == "/api/diagnostics":
+            if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
+            self.json_response(local_diagnostics_payload())
             return
         if route == "/api/session":
             if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
@@ -1194,6 +1599,7 @@ class Handler(BaseHTTPRequestHandler):
             "/styles.css": "styles.css",
             "/app.js": "app.js",
             "/app-icon.png": "cros-logo.png",
+            "/original-logo.png": "cros-logo-original.png",
             "/manifest.json": "manifest.json",
         }
         name = files.get(route)
@@ -1216,7 +1622,8 @@ class Handler(BaseHTTPRequestHandler):
         touch()
         if not self.authorized(): self.json_response({"error": "unauthorized"}, 403); return
         route = urllib.parse.urlsplit(self.path).path
-        body = self.read_json(36_500_000 if route in {"/api/image-analyze", "/api/file-scan"} else 262_144)
+        body = self.read_json(36_500_000 if route in {"/api/image-analyze", "/api/file-scan"} else
+                              8_500_000 if route == "/api/logo" else 262_144)
         if route == "/api/session/start":
             try:
                 self.json_response(start_tool_session(body.get("category", ""), body.get("id", ""),
@@ -1242,6 +1649,13 @@ class Handler(BaseHTTPRequestHandler):
             try: self.json_response(analyze_uploaded_image(body))
             except (OSError, RuntimeError, ValueError) as exc: self.json_response({"error": str(exc)}, 400)
             return
+        if route == "/api/username-session/start":
+            try:
+                self.json_response(start_username_provider_session(str(body.get("provider", "")),
+                                                                    str(body.get("username", ""))))
+            except (OSError, ValueError) as exc:
+                self.json_response({"error": str(exc)}, 400)
+            return
         if route == "/api/file-scan":
             try: self.json_response(scan_uploaded_file(body))
             except (OSError, RuntimeError, ValueError) as exc: self.json_response({"error": str(exc)}, 400)
@@ -1250,9 +1664,23 @@ class Handler(BaseHTTPRequestHandler):
             try: self.json_response(free_public_username_search(str(body.get("username", "")).strip()))
             except (OSError, RuntimeError, ValueError) as exc: self.json_response({"error": str(exc)}, 400)
             return
+        if route == "/api/wifi-audit":
+            try:
+                import security_tools
+                self.json_response(security_tools.collect_wifi_security())
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.json_response({"error": str(exc)}, 400)
+            return
         if route == "/api/open-url":
             try:
                 open_allowed_web_url(body.get("url"))
+                self.json_response({"ok": True})
+            except ValueError as exc: self.json_response({"error": str(exc)}, 400)
+            except OSError as exc: self.json_response({"error": str(exc)}, 500)
+            return
+        if route == "/api/session/result/open":
+            try:
+                open_session_result(body.get("session_id"), body.get("url"))
                 self.json_response({"ok": True})
             except ValueError as exc: self.json_response({"error": str(exc)}, 400)
             except OSError as exc: self.json_response({"error": str(exc)}, 500)
@@ -1292,6 +1720,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response(write_appearance_state(body))
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 500)
+            return
+        if route == "/api/logo":
+            try:
+                self.json_response(apply_logo_choice(str(body.get("preset", "")), str(body.get("image", ""))))
+            except (OSError, ValueError) as exc:
+                self.json_response({"error": str(exc)}, 400)
             return
         if route == "/api/provider-keys":
             try:
@@ -1383,6 +1817,7 @@ def main() -> None:
                 return
 
     threading.Thread(target=idle_monitor, daemon=True).start()
+    threading.Thread(target=_refresh_cros_shortcut, daemon=True).start()
     threading.Thread(target=lambda: (time.sleep(0.25), open_local_app(url)), daemon=True).start()
     try: server.serve_forever(poll_interval=0.5)
     finally:

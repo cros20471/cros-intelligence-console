@@ -26,7 +26,9 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(len(learning_catalog.SOURCES), len({item["id"] for item in learning_catalog.SOURCES}))
 
         advanced = {item["id"] for item in app_catalog.CATALOG if item["category"] == "advanced"}
+        osint = {item["id"] for item in app_catalog.CATALOG if item["category"] == "osint"}
         security = {item["id"] for item in app_catalog.CATALOG if item["category"] == "security"}
+        self.assertLessEqual(osint, set(osint_tool.MAIN_ACTIONS))
         self.assertLessEqual(advanced, set(osint_tool.ADVANCED_ACTIONS))
         self.assertLessEqual(security, set(security_tools.SECURITY_ACTIONS))
 
@@ -35,12 +37,38 @@ class CatalogTests(unittest.TestCase):
         html = (web / "index.html").read_text(encoding="utf-8")
         script = (web / "app.js").read_text(encoding="utf-8")
         styles = (web / "styles.css").read_text(encoding="utf-8")
-        for marker in ('id="tool-count-hero">92</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"', 'id="session-socials"', 'id="session-view-map"', 'id="workspace-customize"', 'id="workspace-width-control"', 'data-workspace-tab-size="large"'):
+        for marker in ('id="tool-count-hero">92</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"', 'id="session-app-results"', 'id="session-socials"', 'id="session-view-map"', 'id="workspace-customize"', 'id="workspace-width-control"', 'data-workspace-tab-size="large"'):
             self.assertIn(marker, html)
-        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession", "addSocialToMap", "renderSessionSocialResults", "setWorkspaceTabSize", "setWorkspaceHomeView"):
+        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession", "addSocialToMap", "renderSessionSocialResults", "renderSessionAppResults", "setWorkspaceTabSize", "setWorkspaceHomeView"):
+            self.assertIn(marker, script)
+        self.assertIn('id="session-log" hidden', html)
+        self.assertIn('id="session-advanced-toggle" hidden', html)
+        self.assertNotIn('id="terminal-button"', html)
+        self.assertNotIn('$("#session-log").hidden = Boolean(options.hideOutput)', script)
+        for marker in ("native-paste-form", "native-search-builder", "native-coordinate-form", "native-hash-reputation-form", "runNativeDiagnostics"):
+            self.assertIn(marker, script)
+        for marker in ('data-logo-style="signal"', 'data-logo-style="scope"', 'data-logo-style="shield"', 'id="custom-logo-file"', 'class="settings-jump-nav"'):
+            self.assertIn(marker, html)
+        self.assertNotIn('data-logo-style="prism"', html)
+        for marker in ("changeLogoStyle", "useCustomLogo", "cros-logo-style"):
             self.assertIn(marker, script)
         self.assertIn("content-visibility: auto", styles)
         self.assertIn("body.fixed-columns .tool-grid", styles)
+
+    def test_window_identity_targets_the_real_app_title(self) -> None:
+        source = (Path(__file__).resolve().parent / "app_server.py").read_text(encoding="utf-8")
+        self.assertIn('buffer.value.startswith("Cros // Intelligence Center")', source)
+        self.assertNotIn('"Cros // Intelligence Console" in buffer.value', source)
+
+    def test_logo_presets_render_as_real_png_images(self) -> None:
+        for preset in ("signal", "scope", "shield", "mono"):
+            rendered = app_server.render_logo_preset(preset)
+            self.assertTrue(rendered.startswith(b"\x89PNG\r\n\x1a\n"), preset)
+            self.assertGreater(len(rendered), 1_000, preset)
+        cleaned = app_server.clean_appearance_state({"cros-logo-style": "scope"})
+        self.assertEqual("scope", cleaned["cros-logo-style"])
+        self.assertNotIn("prism", app_server.LOGO_PRESETS)
+        self.assertRegex(app_server.versioned_app_icon_path().name, r"^cros-icon-[0-9a-f]{12}\.ico$")
 
 
 class ToolSmokeTests(unittest.TestCase):
@@ -99,6 +127,7 @@ class ApiTests(unittest.TestCase):
             "  \u2714\ufe0f  [Instagram] https://www.instagram.com/example/\n"
             "  \u2714  [GitHub] https://github.com/example\n"
             "  \u2713  [Reddit] https://www.reddit.com/user/example\n"
+            "  \u2714  [YouTube Channel] https://www.youtube.com/c/example/about\n"
             "  \u2714  [Instagram] https://www.instagram.com/example/\n"
             "  \u2714  [Instagram] javascript:alert(1)\n"
         )
@@ -106,12 +135,66 @@ class ApiTests(unittest.TestCase):
             results = app_server.blackbird_social_results(output, "example")
         self.assertEqual([
             {"platform": "Instagram", "url": "https://www.instagram.com/example/", "username": "example"},
+            {"platform": "GitHub", "url": "https://github.com/example", "username": "example"},
             {"platform": "Reddit", "url": "https://www.reddit.com/user/example", "username": "example"},
+            {"platform": "YouTube Channel", "url": "https://www.youtube.com/c/example/about", "username": "example"},
         ], results)
 
     def test_blackbird_engine_packages_are_scoped_to_python_abi(self) -> None:
         self.assertEqual(osint_tool.ENGINE_DEPS_DIR / osint_tool.sys.implementation.cache_tag,
                          osint_tool.engine_runtime_dir())
+
+    def test_visual_diagnostics_reports_local_app_health(self) -> None:
+        payload = app_server.local_diagnostics_payload()
+        labels = {item["label"] for item in payload["checks"]}
+        self.assertTrue({"Desktop app", "Python runtime", "Username engines", "Network binding"} <= labels)
+        self.assertGreaterEqual(len(payload["providers"]), 4)
+
+    def test_console_oriented_output_becomes_app_result_data(self) -> None:
+        result = app_server.session_display_results(
+            "Domain or URL: \nExternal research link (copy when needed):\n"
+            "https://web.archive.org/web/*/example.com\n"
+        )
+        self.assertEqual([{
+            "label": "Open website history",
+            "url": "https://web.archive.org/web/*/example.com",
+            "host": "web.archive.org",
+        }], result["links"])
+        self.assertEqual([], result["facts"])
+        self.assertEqual([], result["findings"])
+
+        hash_result = app_server.session_display_results(
+            "Hash value: +--------- Hash Identifier ---------+\n"
+            "| Length: 32 hexadecimal characters |\n"
+            "| Likely type: MD5 or NTLM |\n"
+            "+-----------------------------------+\n"
+            "Length identifies possible formats, not a guaranteed algorithm.\n"
+        )
+        self.assertEqual([
+            {"label": "Length", "value": "32 hexadecimal characters"},
+            {"label": "Likely type", "value": "MD5 or NTLM"},
+        ], hash_result["facts"])
+        self.assertEqual(["Length identifies possible formats, not a guaranteed algorithm."], hash_result["findings"])
+
+    def test_session_result_opener_only_accepts_an_exact_live_return(self) -> None:
+        session_id = "result-open-test"
+        live_url = "https://github.com/example"
+        session = {
+            "category": "osint",
+            "username": "example",
+            "output": f"  \u2714  [GitHub] {live_url}\n",
+        }
+        with app_server.TOOL_SESSIONS_LOCK:
+            app_server.TOOL_SESSIONS[session_id] = session
+        try:
+            with patch.object(app_server.webbrowser, "open", return_value=True) as opener:
+                app_server.open_session_result(session_id, live_url)
+                opener.assert_called_once_with(live_url)
+            with self.assertRaises(ValueError):
+                app_server.open_session_result(session_id, "https://example.com/not-returned")
+        finally:
+            with app_server.TOOL_SESSIONS_LOCK:
+                app_server.TOOL_SESSIONS.pop(session_id, None)
 
     def test_workspace_and_session_inputs_are_sanitized(self) -> None:
         cleaned = app_server.clean_workspace_state({
@@ -125,6 +208,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual([], cleaned["graph"]["edges"])
         with self.assertRaises(ValueError):
             app_server.start_tool_session("osint", "1", username="bad name")
+
+    def test_embedded_prompt_detection_only_flags_live_prompts(self) -> None:
+        self.assertEqual("Full path to a file:", app_server._pending_session_prompt("Full path to a file: ", False))
+        self.assertEqual("", app_server._pending_session_prompt("Scan complete\n", False))
+        self.assertEqual("", app_server._pending_session_prompt("Full path to a file: ", True))
 
     def test_catalog_and_learning_api(self) -> None:
         server = app_server.CrosServer(("127.0.0.1", 0), app_server.Handler)
