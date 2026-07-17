@@ -136,9 +136,12 @@ python -m pip install -r requirements.txt
 python -m unittest -v tests/test_upgrade.py
 python app_server.py
 ```
-btw yes chatgpt helped me make ts
 
 Keep changes local-first, avoid hidden uploads, preserve source attribution, and add tests for new user-facing workflows.
+
+## AI assistance
+
+Yes—ChatGPT and other AI tools helped with parts of Cros's development. The project was directed, reviewed, tested, and published by its owner.
 
 ## License
 
