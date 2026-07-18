@@ -90,7 +90,6 @@
     try {
       const saved = await api("/api/provider-keys");
       if (saved.osintdog) localStorage.setItem("cros-osintdog-key", saved.osintdog);
-      if (saved.hibp) { localStorage.setItem("cros-hibp-key", saved.hibp); const input = $("#hibp-api-key"); if (input) input.value = saved.hibp; }
     } catch (_) {}
   }
 
@@ -2751,12 +2750,6 @@
     $("#map-fit").addEventListener("click", fitGraph);
     $("#map-reset").addEventListener("click", resetGraphView);
     $("#name-search-form").addEventListener("submit", searchNames);
-    $("#save-hibp-key")?.addEventListener("click", async () => {
-      const value = $("#hibp-api-key").value.trim();
-      if (!/^[0-9a-fA-F]{32}$/.test(value)) { toast("HIBP key not saved", "Use the 32-character key from your HIBP account.", true); return; }
-      try { await api("/api/provider-keys", { method: "POST", body: JSON.stringify({ hibp: value }) }); localStorage.setItem("cros-hibp-key", value); toast("HIBP key saved", "Stored locally for future breach checks."); }
-      catch (error) { toast("HIBP key not saved", error.message, true); }
-    });
     $$("[data-playbook-tool]").forEach(button => button.addEventListener("click", () => launchTool(button.dataset.playbookTool)));
     $("#name-provider-picker").addEventListener("click", event => {
       const button = event.target.closest(".engine-option");
