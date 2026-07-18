@@ -14,6 +14,7 @@ SOURCES = [
     {"id": "iana-rdap", "name": "IANA RDAP requirements", "kind": "STANDARD", "topic": "Domains", "url": "https://www.iana.org/help/rdap-requirements", "description": "Authoritative background for modern public domain-registration lookups."},
     {"id": "owasp-headers", "name": "OWASP HTTP Headers Cheat Sheet", "kind": "REFERENCE", "topic": "Web Defense", "url": "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html", "description": "Defensive explanations and recommendations for common HTTP security headers."},
     {"id": "nist-hash", "name": "NIST Secure Hash Standard", "kind": "STANDARD", "topic": "Files", "url": "https://www.nist.gov/publications/secure-hash-standard", "description": "Primary reference for SHA-family cryptographic hash functions."},
+    {"id": "nist-media-sanitization", "name": "NIST SP 800-88 Rev. 2", "kind": "STANDARD", "topic": "Media Sanitization", "url": "https://csrc.nist.gov/pubs/sp/800/88/r2/final", "description": "Current NIST guidance for selecting and validating media sanitization techniques based on storage technology and risk."},
     {"id": "google-lens", "name": "Google Lens", "kind": "DATA SOURCE", "topic": "Images", "url": "https://lens.google.com/", "description": "Visual-search service for finding similar images, objects, text, and possible locations."},
     {"id": "tineye", "name": "TinEye", "kind": "DATA SOURCE", "topic": "Images", "url": "https://tineye.com/", "description": "Reverse-image search service useful for locating earlier or alternate copies of an image."},
     {"id": "openstreetmap", "name": "OpenStreetMap", "kind": "DATA SOURCE", "topic": "Location", "url": "https://www.openstreetmap.org/", "description": "Open geographic reference for validating coordinates and visible map features."},
@@ -134,10 +135,13 @@ GUIDE_NOTES = {
     "security:48": ("Reviewing optional Windows components that can add legacy protocol or remote-service exposure.", "Administrator access to read Windows optional feature state.", "Inspect the targeted legacy and high-exposure feature list, confirm business need for enabled entries, and change features only through approved Windows management.", "An enabled feature is an attack-surface signal, not a vulnerability by itself.", ["ms-features"]),
     "security:49": ("Checking whether virtualization-based security and Credential Guard are configured and running.", "Administrator access and compatible Windows hardware for complete state.", "Review configured and running VBS services, compare with device or organization requirements, and verify unsupported results against the Windows edition and firmware capabilities.", "Configured, running, and supported are different states; absence can be expected on some editions or hardware.", ["ms-credential-guard"]),
     "security:50": ("Reviewing effective PowerShell execution policy and defensive script or module logging settings.", "The local Windows computer.", "Compare execution policy by scope, inspect script-block, module, and transcription policy state, and confirm expected enterprise management before changing anything.", "Execution policy is a safety feature rather than a security boundary; logging improves evidence but does not block malicious scripts.", ["ms-powershell-policy", "ms-audit"]),
+    "security:51": ("Destroying one already-identified local file after malware triage or an approved disposal decision.", "The exact file path or a file explicitly dropped into the tool, plus typed confirmation.", "Verify the target, close programs using it, confirm SHRED, then let Cros overwrite the file three times, rename it, delete it, and verify the path is gone.", "Deletion is irreversible. Software overwrite is useful on magnetic media but cannot guarantee physical sanitization on SSDs, flash storage, snapshots, synced copies, or backups.", ["nist-media-sanitization", "ms-bitlocker"]),
 }
 
 
 def _requirements(item: dict) -> list[str]:
+    if item["key"] == "security:51":
+        return ["One exact local file", "Explicit typed confirmation", "Permission to permanently remove the selected file"]
     access = item["access"]
     values = {
         "local": ["Windows workstation", "No internet required for the main check"],

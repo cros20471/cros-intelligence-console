@@ -276,12 +276,63 @@ def write_workspace_state(value: object) -> dict:
 
 
 APPEARANCE_KEYS = {
-    "cros-interface-preset", "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles",
-    "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density",
-    "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-rail-autoclose",
-    "cros-operator-name", "cros-screen-fit", "cros-logo-style",
+    "cros-interface-preset", "cros-accent", "cros-custom-accent",
+    "cros-background", "cros-background-style", "cros-background-dim",
+    "cros-panel-blur", "cros-star-color", "cros-particles",
+    "cros-wing-style", "cros-wing-size", "cros-wing-spread",
+    "cros-wing-lift", "cros-wing-brightness", "cros-wing-density",
+    "cros-wings", "cros-compact", "cros-animations", "cros-glow",
+    "cros-motion", "cros-particle-density", "cros-light-smoothing",
+    "cros-star-brightness", "cros-shape", "cros-columns",
+    "cros-screen-fit", "cros-rail-autoclose", "cros-rail-width",
+    "cros-rail-collapsed", "cros-workspace-width", "cros-workspace-height",
+    "cros-workspace-size-model", "cros-workspace-position", "cros-workspace-tab-size",
+    "cros-workspace-home-view", "cros-operator-name", "cros-logo-style",
 }
 HEX_APPEARANCE_KEYS = {"cros-custom-accent", "cros-background", "cros-star-color"}
+APPEARANCE_CHOICES = {
+    "cros-accent": {"violet", "cyan", "red", "green", "amber", "ice", "custom"},
+    "cros-interface-preset": {
+        "flux", "cros", "arctic", "matrix", "amber", "mono", "ocean",
+        "rose", "cyber", "midnight", "minimal", "slate", "paper",
+        "graphite", "linen", "vs-dark", "vs-light", "vs-contrast",
+    },
+    "cros-background-style": {
+        "basic", "nebula", "grid", "aurora", "eclipse", "void",
+        "blueprint", "storm", "scanline", "solar", "synthwave",
+        "emerald", "frost", "starfield", "radar", "carbon", "sunset",
+    },
+    "cros-wing-style": {
+        "seraph", "razor", "hologram", "phoenix", "stealth", "arc",
+        "prism", "sentinel",
+    },
+    "cros-wing-density": {"sparse", "normal", "dense"},
+    "cros-shape": {"soft", "sharp", "round"},
+    "cros-columns": {"auto", "3", "4", "5"},
+    "cros-screen-fit": {"laptop", "medium", "large"},
+    "cros-logo-style": {"original", "signal", "scope", "shield", "mono", "custom"},
+    "cros-rail-autoclose": {"0", "3000", "5000", "10000"},
+    "cros-rail-collapsed": {"0", "1"},
+    "cros-workspace-size-model": {"border-box"},
+    "cros-workspace-tab-size": {"compact", "normal", "large"},
+    "cros-workspace-home-view": {"research", "map", "session"},
+}
+APPEARANCE_NUMBER_BOUNDS = {
+    "cros-glow": (0, 100),
+    "cros-motion": (35, 180),
+    "cros-particle-density": (20, 180),
+    "cros-light-smoothing": (20, 100),
+    "cros-star-brightness": (30, 240),
+    "cros-background-dim": (0, 70),
+    "cros-panel-blur": (0, 32),
+    "cros-wing-size": (70, 135),
+    "cros-wing-spread": (65, 155),
+    "cros-wing-lift": (-40, 40),
+    "cros-wing-brightness": (35, 120),
+    "cros-rail-width": (240, 420),
+    "cros-workspace-width": (300, 900),
+    "cros-workspace-height": (360, 2160),
+}
 
 
 def clean_appearance_state(value: object) -> dict[str, str]:
@@ -294,33 +345,30 @@ def clean_appearance_state(value: object) -> dict[str, str]:
         text = _short_text(raw, 40 if key == "cros-operator-name" else 32)
         if key in HEX_APPEARANCE_KEYS and not re.fullmatch(r"#[0-9a-fA-F]{6}", text):
             continue
-        if key == "cros-accent" and text not in {"violet", "cyan", "red", "green", "amber", "ice", "custom"}:
-            continue
-        if key == "cros-interface-preset" and text not in {"flux", "cros", "arctic", "matrix", "amber", "mono", "ocean", "rose", "cyber", "midnight"}:
-            continue
-        if key in {"cros-shape"} and text not in {"soft", "sharp", "round"}:
-            continue
-        if key == "cros-columns" and text not in {"auto", "3", "4", "5"}:
-            continue
-        if key == "cros-screen-fit" and text not in {"laptop", "medium", "large"}:
-            continue
-        if key == "cros-logo-style" and text not in {"original", "signal", "scope", "shield", "mono", "custom"}:
-            continue
-        if key == "cros-rail-autoclose" and text not in {"0", "3000", "5000", "10000"}:
+        if key in APPEARANCE_CHOICES and text not in APPEARANCE_CHOICES[key]:
             continue
         if key == "cros-operator-name" and not re.fullmatch(r"[^\r\n]{1,40}", text):
             continue
         if key in {"cros-particles", "cros-wings", "cros-compact", "cros-animations"} and text not in {"true", "false"}:
             continue
-        if key in {"cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness"}:
+        if key in APPEARANCE_NUMBER_BOUNDS:
             try:
                 number = int(text)
             except ValueError:
                 continue
-            bounds = {"cros-glow": (0, 100), "cros-motion": (35, 180), "cros-particle-density": (20, 180), "cros-light-smoothing": (20, 100), "cros-star-brightness": (30, 240)}[key]
+            bounds = APPEARANCE_NUMBER_BOUNDS[key]
             if not bounds[0] <= number <= bounds[1]:
                 continue
             text = str(number)
+        if key == "cros-workspace-position":
+            try:
+                position = json.loads(text)
+                left, top = int(position["left"]), int(position["top"])
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if not 0 <= left <= 10_000 or not 0 <= top <= 10_000:
+                continue
+            text = json.dumps({"left": left, "top": top}, separators=(",", ":"))
         result[key] = text
     return result
 
@@ -379,7 +427,7 @@ def unprotect_local_key(value: str) -> str:
 def read_provider_keys() -> dict[str, str]:
     try:
         saved = json.loads(KEY_VAULT_FILE.read_text(encoding="utf-8"))
-        return {name: unprotect_local_key(str(value)) for name, value in saved.items() if name in {"osintdog", "hibp"} and value}
+        return {name: unprotect_local_key(str(value)) for name, value in saved.items() if name in {"osintdog", "hibp", "xposedornot"} and value}
     except (OSError, ValueError, json.JSONDecodeError, binascii.Error, UnicodeError):
         return {}
 
@@ -387,13 +435,13 @@ def read_provider_keys() -> dict[str, str]:
 def write_provider_keys(value: object) -> dict[str, bool]:
     incoming = value if isinstance(value, dict) else {}
     keys = read_provider_keys()
-    keys.update({name: str(incoming.get(name, "")).strip() for name in ("osintdog", "hibp") if str(incoming.get(name, "")).strip()})
+    keys.update({name: str(incoming.get(name, "")).strip() for name in ("osintdog", "hibp", "xposedornot") if str(incoming.get(name, "")).strip()})
     encrypted = {name: protect_local_key(secret) for name, secret in keys.items()}
     temporary = KEY_VAULT_FILE.with_suffix(".tmp")
     with KEY_VAULT_LOCK:
         temporary.write_text(json.dumps(encrypted, indent=2), encoding="utf-8")
         os.replace(temporary, KEY_VAULT_FILE)
-    return {"osintdog": bool(keys.get("osintdog")), "hibp": bool(keys.get("hibp"))}
+    return {"osintdog": bool(keys.get("osintdog")), "hibp": bool(keys.get("hibp")), "xposedornot": bool(keys.get("xposedornot"))}
 
 
 def clear_local_data() -> None:
@@ -467,9 +515,13 @@ def _free_breach_check(target: str) -> dict[str, object]:
         _breach_log("cache-hit provider=xposedornot")
         return {"provider": "XposedOrNot", "target_type": "email", "cached": True, "results": cached.get("results", [])}
     _wait_for_breach_request()
+    headers = {"user-agent": "Cros-Intelligence-Center/1.0", "accept": "application/json"}
+    xon_api_key = read_provider_keys().get("xposedornot", "").strip()
+    if xon_api_key:
+        headers["x-api-key"] = xon_api_key
     request = urllib.request.Request(
         "https://api.xposedornot.com/v1/check-email/" + urllib.parse.quote(target, safe="") + "?details=true",
-        headers={"user-agent": "Cros-Intelligence-Center/1.0", "accept": "application/json"},
+        headers=headers,
     )
     _breach_log("request-start provider=xposedornot")
     try:
@@ -480,7 +532,7 @@ def _free_breach_check(target: str) -> dict[str, object]:
             _wait_for_breach_request()
             analytics_request = urllib.request.Request(
                 "https://api.xposedornot.com/v1/breach-analytics?email=" + urllib.parse.quote(target, safe=""),
-                headers={"user-agent": "Cros-Intelligence-Center/1.0", "accept": "application/json"},
+                headers=headers,
             )
             with urllib.request.urlopen(analytics_request, timeout=20) as response:
                 analytics = json.loads(response.read().decode("utf-8"))
@@ -1892,6 +1944,16 @@ class Handler(BaseHTTPRequestHandler):
             try: self.json_response(scan_uploaded_file(body))
             except (OSError, RuntimeError, ValueError) as exc: self.json_response({"error": str(exc)}, 400)
             return
+        if route == "/api/file-shred":
+            try:
+                import security_tools
+                self.json_response(security_tools.secure_shred_file(
+                    str(body.get("path", "")),
+                    confirmed=body.get("confirmation") == "SHRED",
+                ))
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.json_response({"error": str(exc)}, 400)
+            return
         if route == "/api/free-public-search":
             try: self.json_response(free_public_username_search(str(body.get("username", "")).strip()))
             except (OSError, RuntimeError, ValueError) as exc: self.json_response({"error": str(exc)}, 400)
@@ -1971,6 +2033,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response({"ok": True})
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 500)
+            return
+        if route == "/api/leakcheck-check":
+            target = str(body.get("target", "")).strip()
+            try:
+                result = breach_check(target, provider="xposedornot")
+                result["found"] = bool(result.get("results"))
+                result["breaches"] = result.get("results", [])
+                self.json_response(result)
+            except ValueError as exc:
+                self.json_response({"error": str(exc)}, 400)
+            except OSError as exc:
+                self.json_response({"error": str(exc)}, 502)
             return
         if route == "/api/breach-check":
             target = str(body.get("email", body.get("target", ""))).strip()

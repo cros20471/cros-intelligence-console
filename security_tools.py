@@ -10,7 +10,9 @@ import json
 import math
 import os
 import re
+import secrets
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -1548,6 +1550,145 @@ def powershell_policy_audit() -> None:
     pause()
 
 
+def _protected_shred_roots() -> tuple[Path, ...]:
+    values = [APP_DIR]
+    for name in ("SystemRoot", "WINDIR", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"):
+        raw = os.environ.get(name)
+        if raw:
+            values.append(Path(raw))
+    roots = []
+    for value in values:
+        try:
+            resolved = value.expanduser().resolve(strict=False)
+        except OSError:
+            continue
+        if resolved not in roots:
+            roots.append(resolved)
+    return tuple(roots)
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def secure_shred_file(raw_path: str, confirmed: bool = False, passes: int = 3) -> dict:
+    """Overwrite and unlink one explicitly confirmed regular file.
+
+    This is a best-effort logical overwrite. SSD wear-leveling, snapshots,
+    synchronized copies, and backups are outside the file system's control.
+    """
+    if not confirmed:
+        raise ValueError("Type SHRED and confirm the irreversible deletion first")
+    if passes != 3:
+        raise ValueError("Cros secure shredding uses exactly three overwrite passes")
+    value = str(raw_path or "").strip().strip('"')
+    if not value or len(value) > 4096:
+        raise ValueError("Enter one complete local file path")
+    candidate = Path(value).expanduser()
+    try:
+        if candidate.is_symlink():
+            raise ValueError("Symbolic links and reparse-point files are not accepted")
+        target = candidate.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ValueError("The selected file does not exist") from exc
+    except OSError as exc:
+        raise ValueError(f"Windows could not resolve that file: {exc}") from exc
+    if not target.is_file():
+        raise ValueError("Choose one file. Folders and devices are blocked")
+    if target.parent == Path(target.anchor):
+        raise ValueError("Files stored directly in a drive root are protected")
+    protected = _protected_shred_roots()
+    if any(_is_within(target, root) for root in protected):
+        raise ValueError("Cros blocks shredding its own files and protected Windows application folders")
+    if target == Path(sys.executable).resolve(strict=False):
+        raise ValueError("The active Python runtime is protected")
+
+    before = os.lstat(target)
+    if getattr(before, "st_nlink", 1) > 1:
+        raise ValueError("Files with multiple hard links are blocked to avoid destroying another linked file")
+    size = int(before.st_size)
+    if size > 8 * 1024 * 1024 * 1024:
+        raise ValueError("Files larger than 8 GB are blocked to prevent an unbounded shred operation")
+
+    try:
+        os.chmod(target, stat.S_IREAD | stat.S_IWRITE)
+    except OSError:
+        pass
+
+    patterns: tuple[int | None, ...] = (None, 0, None)
+    chunk_size = 1024 * 1024
+    try:
+        with target.open("r+b", buffering=0) as stream:
+            opened = os.fstat(stream.fileno())
+            if (getattr(before, "st_dev", None), getattr(before, "st_ino", None)) != (
+                getattr(opened, "st_dev", None), getattr(opened, "st_ino", None)
+            ):
+                raise OSError("The file changed while Cros was opening it")
+            for pattern in patterns:
+                stream.seek(0)
+                remaining = size
+                while remaining:
+                    length = min(chunk_size, remaining)
+                    block = secrets.token_bytes(length) if pattern is None else bytes([pattern]) * length
+                    written = stream.write(block)
+                    if written != length:
+                        raise OSError("Windows reported an incomplete overwrite")
+                    remaining -= written
+                stream.flush()
+                os.fsync(stream.fileno())
+    except PermissionError as exc:
+        raise PermissionError("The file is in use or Windows denied write access. Close the owning program and try again") from exc
+
+    current = os.lstat(target)
+    if (getattr(before, "st_dev", None), getattr(before, "st_ino", None)) != (
+        getattr(current, "st_dev", None), getattr(current, "st_ino", None)
+    ):
+        raise OSError("The target changed during shredding, so Cros refused to delete the replacement path")
+    renamed = target.with_name(f".cros-shred-{secrets.token_hex(12)}")
+    try:
+        os.replace(target, renamed)
+        renamed.unlink()
+    except OSError:
+        try:
+            target.unlink(missing_ok=True)
+        except OSError as exc:
+            raise OSError("The file data was overwritten, but Windows could not remove the final directory entry") from exc
+    if target.exists() or renamed.exists():
+        raise OSError("Deletion verification failed; the file still exists")
+    return {
+        "ok": True,
+        "file_name": target.name,
+        "size": size,
+        "passes": len(patterns),
+        "bytes_overwritten": size * len(patterns),
+        "deleted": True,
+        "verification": "The original and randomized paths no longer exist",
+        "storage_note": "Logical overwrite completed. SSD wear-leveling, snapshots, sync services, and backups may retain other physical or copied data.",
+    }
+
+
+def file_shredder() -> None:
+    print(paint("\nSECURE FILE SHREDDER", "red", bold=True))
+    print("Irreversible: one regular file only. Windows, application, folder, link, and drive-root targets are blocked.")
+    path = input("Full path to the file: ").strip()
+    confirmation = input("Type SHRED to overwrite and permanently delete this file: ").strip()
+    if confirmation != "SHRED":
+        print(paint("Shred cancelled.", "yellow"))
+        pause()
+        return
+    try:
+        result = secure_shred_file(path, confirmed=True)
+        print(paint(f"Deleted {result['file_name']} after {result['passes']} overwrite passes.", "green"))
+        print(result["storage_note"])
+    except (OSError, ValueError) as exc:
+        print(paint(f"File shredder stopped: {exc}", "red"))
+    pause()
+
+
 def open_security_guide() -> None:
     choice = input("Security tutorial [show/skip]: ").strip().lower() or "show"
     if choice == "skip": return
@@ -1589,7 +1730,8 @@ SECURITY_PANELS = [
         ("43", "UAC + SmartScreen"), ("44", "Recovery Readiness"),
         ("45", "PATH Security"), ("46", "Certificate Expiry"),
         ("47", "Event Log Health"), ("48", "Risky Windows Features"),
-        ("49", "Credential Guard"), ("50", "PowerShell Policy"), ("0", "Back"),
+        ("49", "Credential Guard"), ("50", "PowerShell Policy"),
+        ("51", "Secure File Shredder"), ("0", "Back"),
     ]),
 ]
 
@@ -1627,6 +1769,7 @@ SECURITY_ACTIONS = {
     "45": path_security_audit, "46": certificate_expiry_audit,
     "47": event_log_health_audit, "48": risky_windows_features_audit,
     "49": credential_guard_audit, "50": powershell_policy_audit,
+    "51": file_shredder,
 }
 
 
@@ -1635,7 +1778,7 @@ def security_center(color: str = "cyan") -> None:
         os.system("cls" if os.name == "nt" else "clear")
         print(paint("\n" + "=" * 112, color))
         print(paint("CROS DEFENSIVE SECURITY CENTER".center(112), color, bold=True))
-        print(paint("50 defensive tools. Read-only by default. Defender scans require confirmation.".center(112), "white"))
+        print(paint("51 defensive tools. Read-only by default. Scans and destructive actions require confirmation.".center(112), "white"))
         print(paint("=" * 112 + "\n", color))
         for index in range(0, len(SECURITY_PANELS), 2):
             pair = SECURITY_PANELS[index:index + 2]
