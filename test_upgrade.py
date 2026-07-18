@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import threading
 import unittest
@@ -20,8 +21,8 @@ import security_tools
 
 class CatalogTests(unittest.TestCase):
     def test_catalog_lessons_and_actions_stay_in_sync(self) -> None:
-        self.assertEqual(92, len(app_catalog.CATALOG))
-        self.assertEqual(92, len(app_catalog.TOOL_KEYS))
+        self.assertEqual(93, len(app_catalog.CATALOG))
+        self.assertEqual(93, len(app_catalog.TOOL_KEYS))
         self.assertEqual(app_catalog.TOOL_KEYS, set(learning_catalog.LEARNING))
         self.assertEqual(len(learning_catalog.SOURCES), len({item["id"] for item in learning_catalog.SOURCES}))
 
@@ -37,10 +38,13 @@ class CatalogTests(unittest.TestCase):
         html = (web / "index.html").read_text(encoding="utf-8")
         script = (web / "app.js").read_text(encoding="utf-8")
         styles = (web / "styles.css").read_text(encoding="utf-8")
-        for marker in ('id="tool-count-hero">92</b> TOOLS INDEXED', "DEFENSE / 50", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"', 'id="session-app-results"', 'id="session-socials"', 'id="session-view-map"', 'id="workspace-customize"', 'id="workspace-width-control"', 'data-workspace-tab-size="large"'):
+        for marker in ('id="tool-count-hero">93</b> TOOLS INDEXED', "DEFENSE / 51", 'data-filter="favorites"', 'data-filter="recent"', 'data-columns="5"', 'id="investigation-workbench"', 'id="neural-map"', 'id="workspace-dock"', 'id="session-progress"', 'id="session-app-results"', 'id="session-socials"', 'id="session-view-map"', 'id="workspace-customize"', 'id="workspace-width-control"', 'id="workspace-height-control"', 'id="workspace-height-resize-handle"', 'data-workspace-tab-size="large"'):
             self.assertIn(marker, html)
-        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession", "addSocialToMap", "renderSessionSocialResults", "renderSessionAppResults", "setWorkspaceTabSize", "setWorkspaceHomeView"):
+        for marker in ("favoriteTools", "recentTools", "setColumns", "scheduleToolRender", "persistWorkspace", "scanImage", "searchNames", "startToolSession", "addSocialToMap", "renderSessionSocialResults", "renderSessionAppResults", "setWorkspaceTabSize", "setWorkspaceHomeView", "setWorkspaceHeight", "handleWorkspaceHeightResize"):
             self.assertIn(marker, script)
+        self.assertIn("persistWorkspaceDockSize", script)
+        self.assertIn("dock.getBoundingClientRect()", script)
+        self.assertNotIn("dock.clientHeight", script)
         self.assertIn('id="session-log" hidden', html)
         self.assertIn('id="session-advanced-toggle" hidden', html)
         self.assertNotIn('id="terminal-button"', html)
@@ -69,6 +73,38 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual("scope", cleaned["cros-logo-style"])
         self.assertNotIn("prism", app_server.LOGO_PRESETS)
         self.assertRegex(app_server.versioned_app_icon_path().name, r"^cros-icon-[0-9a-f]{12}\.ico$")
+
+    def test_all_frontend_appearance_preferences_are_saved_by_the_server(self) -> None:
+        script = (Path(__file__).resolve().parent / "web" / "app.js").read_text(encoding="utf-8")
+        key_block = script.split("const APPEARANCE_KEYS = [", 1)[1].split("];", 1)[0]
+        frontend_keys = set(re.findall(r'"(cros-[a-z-]+)"', key_block))
+        self.assertEqual(app_server.APPEARANCE_KEYS, frontend_keys)
+
+        expected = {
+            "cros-interface-preset": "vs-contrast",
+            "cros-background-style": "sunset",
+            "cros-background-dim": "27",
+            "cros-panel-blur": "18",
+            "cros-wing-style": "prism",
+            "cros-wing-size": "120",
+            "cros-wing-spread": "145",
+            "cros-wing-lift": "-12",
+            "cros-wing-brightness": "110",
+            "cros-wing-density": "dense",
+            "cros-rail-width": "320",
+            "cros-rail-collapsed": "1",
+            "cros-workspace-width": "740",
+            "cros-workspace-height": "680",
+            "cros-workspace-size-model": "border-box",
+            "cros-workspace-position": '{"left":420,"top":80}',
+            "cros-workspace-tab-size": "large",
+            "cros-workspace-home-view": "map",
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            state_file = Path(folder) / "appearance_state.json"
+            with patch.object(app_server, "APPEARANCE_STATE_FILE", state_file):
+                self.assertEqual(expected, app_server.write_appearance_state({**expected, "unknown": "ignored"}))
+                self.assertEqual(expected, app_server.read_appearance_state())
 
 
 class ToolSmokeTests(unittest.TestCase):
@@ -119,6 +155,27 @@ class ToolSmokeTests(unittest.TestCase):
                 patch("builtins.print"):
             for check in checks:
                 check()
+
+    def test_secure_file_shredder_deletes_one_confirmed_file_and_blocks_unsafe_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            target = root / "confirmed-sample.bin"
+            target.write_bytes(b"malware-test-data" * 32)
+            result = security_tools.secure_shred_file(str(target), confirmed=True)
+            self.assertTrue(result["deleted"])
+            self.assertEqual(3, result["passes"])
+            self.assertFalse(target.exists())
+
+            protected_sample = app_server.APP_DIR / "app_catalog.py"
+            with self.assertRaises(ValueError):
+                security_tools.secure_shred_file(str(protected_sample), confirmed=True)
+            with self.assertRaises(ValueError):
+                security_tools.secure_shred_file(str(root), confirmed=True)
+            unconfirmed = root / "unconfirmed.bin"
+            unconfirmed.write_bytes(b"keep")
+            with self.assertRaises(ValueError):
+                security_tools.secure_shred_file(str(unconfirmed), confirmed=False)
+            self.assertTrue(unconfirmed.exists())
 
 
 class ApiTests(unittest.TestCase):
@@ -227,17 +284,38 @@ class ApiTests(unittest.TestCase):
             with urllib.request.urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read().decode("utf-8"))
 
+        def post(path: str, payload: dict) -> tuple[int, dict]:
+            request = urllib.request.Request(
+                f"http://{host}:{port}{path}",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "X-Cros-Token": app_server.TOKEN},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                return response.status, json.loads(response.read().decode("utf-8"))
+
         try:
             self.assertEqual((200, True), (get("/api/health", token="")[0], get("/api/health", token="")[1]["ok"]))
             catalog_status, catalog = get("/api/catalog")
             learning_status, learning = get("/api/learning")
             self.assertEqual(200, catalog_status)
-            self.assertEqual(92, catalog["count"])
+            self.assertEqual(93, catalog["count"])
             self.assertEqual(200, learning_status)
-            self.assertEqual(92, learning["count"])
+            self.assertEqual(93, learning["count"])
             with self.assertRaises(urllib.error.HTTPError) as denied:
                 get("/api/catalog", token="wrong")
             self.assertEqual(403, denied.exception.code)
+            with tempfile.TemporaryDirectory() as folder:
+                target = Path(folder) / "api-shred-test.bin"
+                target.write_bytes(b"api-shred-test" * 16)
+                with self.assertRaises(urllib.error.HTTPError) as unconfirmed:
+                    post("/api/file-shred", {"path": str(target), "confirmation": "NO"})
+                self.assertEqual(400, unconfirmed.exception.code)
+                self.assertTrue(target.exists())
+                shred_status, shred_result = post("/api/file-shred", {"path": str(target), "confirmation": "SHRED"})
+                self.assertEqual(200, shred_status)
+                self.assertTrue(shred_result["deleted"])
+                self.assertFalse(target.exists())
         finally:
             server.shutdown()
             server.server_close()

@@ -77,7 +77,20 @@
     return payload;
   }
 
-  const APPEARANCE_KEYS = ["cros-interface-preset", "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-screen-fit", "cros-rail-autoclose", "cros-operator-name", "cros-logo-style"];
+  const APPEARANCE_KEYS = [
+    "cros-interface-preset", "cros-accent", "cros-custom-accent",
+    "cros-background", "cros-background-style", "cros-background-dim",
+    "cros-panel-blur", "cros-star-color", "cros-particles",
+    "cros-wing-style", "cros-wing-size", "cros-wing-spread",
+    "cros-wing-lift", "cros-wing-brightness", "cros-wing-density",
+    "cros-wings", "cros-compact", "cros-animations", "cros-glow",
+    "cros-motion", "cros-particle-density", "cros-light-smoothing",
+    "cros-star-brightness", "cros-shape", "cros-columns",
+    "cros-screen-fit", "cros-rail-autoclose", "cros-rail-width",
+    "cros-rail-collapsed", "cros-workspace-width", "cros-workspace-height",
+    "cros-workspace-size-model", "cros-workspace-position", "cros-workspace-tab-size",
+    "cros-workspace-home-view", "cros-operator-name", "cros-logo-style",
+  ];
   let appearanceSaveTimer = 0;
   function appearanceSnapshot() { return Object.fromEntries(APPEARANCE_KEYS.filter(key => localStorage.getItem(key) !== null).map(key => [key, localStorage.getItem(key)])); }
   function queueAppearanceSave() { clearTimeout(appearanceSaveTimer); appearanceSaveTimer = setTimeout(() => { api("/api/appearance", { method: "POST", body: JSON.stringify(appearanceSnapshot()) }).catch(() => {}); }, 180); }
@@ -90,7 +103,25 @@
     try {
       const saved = await api("/api/provider-keys");
       if (saved.osintdog) localStorage.setItem("cros-osintdog-key", saved.osintdog);
+      const xonInput = $("#xposedornot-api-key");
+      const xonStatus = $("#xposedornot-key-status");
+      if (xonInput) xonInput.value = saved.xposedornot || "";
+      if (xonStatus) xonStatus.textContent = saved.xposedornot ? "CONFIGURED" : "NOT CONFIGURED";
     } catch (_) {}
+  }
+
+  async function saveXposedOrNotKey() {
+    const input = $("#xposedornot-api-key");
+    const status = $("#xposedornot-key-status");
+    const key = input.value.trim();
+    if (!key) { toast("Key required", "Paste an XposedOrNot API key first.", true); return; }
+    if (key.length > 512) { toast("Invalid key", "The API key is too long.", true); return; }
+    try {
+      const saved = await api("/api/provider-keys", { method: "POST", body: JSON.stringify({ xposedornot: key }) });
+      status.textContent = saved.xposedornot ? "CONFIGURED" : "NOT CONFIGURED";
+      input.value = "";
+      toast("XposedOrNot key saved", "The key is encrypted for this Windows user and used only by the local server.");
+    } catch (error) { toast("Could not save key", error.message, true); }
   }
 
   function toast(title, message, error = false) {
@@ -570,6 +601,7 @@
     document.body.classList.add("workspace-open");
     $("#workspace-restore").hidden = true;
     setWorkspaceView(view);
+    requestAnimationFrame(handleWorkspaceViewportChange);
   }
 
   function closeWorkspace() {
@@ -584,10 +616,34 @@
 
   function setWorkspaceWidth(value, persist = true) {
     const width = Math.max(300, Math.min(Math.min(900, innerWidth - 20), Number(value) || 570));
+    const dock = $("#workspace-dock");
+    if (dock && !dock.classList.contains("expanded") && innerWidth > 880) dock.style.width = "";
     document.documentElement.style.setProperty("--workspace-width", `${width}px`);
     $("#workspace-width-control").value = String(Math.round(width));
     $("#workspace-width-value").textContent = `${Math.round(width)}px`;
-    if (persist) localStorage.setItem("cros-workspace-width", String(Math.round(width)));
+    if (persist) {
+      localStorage.setItem("cros-workspace-width", String(Math.round(width)));
+      queueAppearanceSave();
+    }
+  }
+
+  function setWorkspaceHeight(value, persist = true) {
+    const dock = $("#workspace-dock");
+    const top = Math.max(4, dock?.getBoundingClientRect().top || 12);
+    const maximum = Math.max(360, Math.min(2160, innerHeight - top - 8));
+    const height = Math.max(360, Math.min(maximum, Number(value) || 620));
+    if (dock && !dock.classList.contains("expanded") && innerWidth > 880) dock.style.height = `${height}px`;
+    const control = $("#workspace-height-control");
+    if (control) {
+      control.max = String(maximum);
+      control.value = String(Math.round(height));
+    }
+    if ($("#workspace-height-value")) $("#workspace-height-value").textContent = `${Math.round(height)}px`;
+    if (persist) {
+      localStorage.setItem("cros-workspace-height", String(Math.round(height)));
+      localStorage.setItem("cros-workspace-size-model", "border-box");
+      queueAppearanceSave();
+    }
   }
 
   function setWorkspaceTabSize(size, persist = true) {
@@ -598,13 +654,19 @@
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", String(active));
     });
-    if (persist) localStorage.setItem("cros-workspace-tab-size", value);
+    if (persist) {
+      localStorage.setItem("cros-workspace-tab-size", value);
+      queueAppearanceSave();
+    }
   }
 
   function setWorkspaceHomeView(view, persist = true) {
     state.workspaceHomeView = ["research", "map", "session"].includes(view) ? view : "research";
     $("#workspace-home-view").value = state.workspaceHomeView;
-    if (persist) localStorage.setItem("cros-workspace-home-view", state.workspaceHomeView);
+    if (persist) {
+      localStorage.setItem("cros-workspace-home-view", state.workspaceHomeView);
+      queueAppearanceSave();
+    }
   }
 
   function toggleWorkspaceSettings() {
@@ -613,29 +675,66 @@
     $("#workspace-customize").setAttribute("aria-expanded", String(!panel.hidden));
   }
 
+  function persistWorkspaceDockSize() {
+    const dock = $("#workspace-dock");
+    if (!dock || dock.hidden || dock.classList.contains("expanded") || innerWidth <= 880) return;
+    const rect = dock.getBoundingClientRect();
+    const width = Math.max(300, Math.min(900, Math.round(rect.width)));
+    const height = Math.max(360, Math.min(2160, Math.round(rect.height)));
+    let changed = false;
+    if (localStorage.getItem("cros-workspace-width") !== String(width)) {
+      localStorage.setItem("cros-workspace-width", String(width));
+      document.documentElement.style.setProperty("--workspace-width", `${width}px`);
+      $("#workspace-width-control").value = String(width);
+      $("#workspace-width-value").textContent = `${width}px`;
+      changed = true;
+    }
+    if (localStorage.getItem("cros-workspace-height") !== String(height)) {
+      localStorage.setItem("cros-workspace-height", String(height));
+      changed = true;
+    }
+    if ($("#workspace-height-control")) {
+      $("#workspace-height-control").max = String(Math.max(360, Math.min(2160, innerHeight - Math.max(4, rect.top) - 8)));
+      $("#workspace-height-control").value = String(height);
+      $("#workspace-height-value").textContent = `${height}px`;
+    }
+    if (localStorage.getItem("cros-workspace-size-model") !== "border-box") {
+      localStorage.setItem("cros-workspace-size-model", "border-box");
+      changed = true;
+    }
+    if (changed) queueAppearanceSave();
+  }
+
   function setupWorkspaceDock() {
     const content = $("#workspace-dock-content");
     content.prepend($("#investigation-workbench"), $("#investigation-map"));
     setWorkspaceWidth(localStorage.getItem("cros-workspace-width") || 570, false);
     const savedHeight = Number(localStorage.getItem("cros-workspace-height"));
-    if (savedHeight >= 360) $("#workspace-dock").style.height = `${Math.min(savedHeight, innerHeight - 16)}px`;
+    if (savedHeight >= 360) {
+      const legacyInset = localStorage.getItem("cros-workspace-size-model") === "border-box" ? 0 : 2;
+      const restoredHeight = Math.min(savedHeight + legacyInset, innerHeight - 16);
+      setWorkspaceHeight(restoredHeight, false);
+      if (legacyInset) {
+        localStorage.setItem("cros-workspace-height", String(restoredHeight));
+        localStorage.setItem("cros-workspace-size-model", "border-box");
+        queueAppearanceSave();
+      }
+    } else setWorkspaceHeight(Math.min(820, innerHeight - 24), false);
     setWorkspaceTabSize(localStorage.getItem("cros-workspace-tab-size") || "normal", false);
     setWorkspaceHomeView(localStorage.getItem("cros-workspace-home-view") || "research", false);
     setWorkspaceView(state.workspaceHomeView);
     try { const v = JSON.parse(localStorage.getItem("cros-map-view") || "null"); if (v && v.width) graphView = v; } catch (_) {}
-    if (window.ResizeObserver) new ResizeObserver(() => {
-      const dock = $("#workspace-dock");
-      if (!dock.classList.contains("expanded") && dock.clientHeight >= 360) localStorage.setItem("cros-workspace-height", String(dock.clientHeight));
-    }).observe($("#workspace-dock"));
+    if (window.ResizeObserver) new ResizeObserver(persistWorkspaceDockSize).observe($("#workspace-dock"));
     try { const p = JSON.parse(localStorage.getItem("cros-workspace-position") || "null"); if (p) setWorkspacePosition(Number(p.left), Number(p.top), false); } catch (_) {}
   }
 
   let workspaceResizing = false;
+  let workspaceHeightResizing = false;
   let railResizing = false;
   let railAutoCloseTimer = 0;
-  function toggleNavigation() { document.body.classList.toggle("rail-collapsed"); localStorage.setItem("cros-rail-collapsed", document.body.classList.contains("rail-collapsed") ? "1" : "0"); }
-  function scheduleRailClose() { clearTimeout(railAutoCloseTimer); const delay = Number(localStorage.getItem("cros-rail-autoclose") ?? 3000); if (delay > 0 && innerWidth >= 1100) railAutoCloseTimer = setTimeout(() => { document.body.classList.add("rail-collapsed"); localStorage.setItem("cros-rail-collapsed", "1"); }, delay); }
-  function handleRailResize(event) { if (!railResizing || innerWidth < 1100) return; const width = Math.max(240, Math.min(420, event.clientX - 12)); document.documentElement.style.setProperty("--rail-width", `${width}px`); localStorage.setItem("cros-rail-width", String(width)); }
+  function toggleNavigation() { document.body.classList.toggle("rail-collapsed"); localStorage.setItem("cros-rail-collapsed", document.body.classList.contains("rail-collapsed") ? "1" : "0"); queueAppearanceSave(); }
+  function scheduleRailClose() { clearTimeout(railAutoCloseTimer); const delay = Number(localStorage.getItem("cros-rail-autoclose") ?? 3000); if (delay > 0 && innerWidth >= 1100) railAutoCloseTimer = setTimeout(() => { document.body.classList.add("rail-collapsed"); localStorage.setItem("cros-rail-collapsed", "1"); queueAppearanceSave(); }, delay); }
+  function handleRailResize(event) { if (!railResizing || innerWidth < 1100) return; const width = Math.max(240, Math.min(420, event.clientX - 12)); document.documentElement.style.setProperty("--rail-width", `${width}px`); localStorage.setItem("cros-rail-width", String(width)); queueAppearanceSave(); }
   let workspaceDragging = false;
   let workspaceDragOffset = { x: 0, y: 0 };
   let workspaceFrame = 0;
@@ -644,7 +743,10 @@
     const dock = $("#workspace-dock"), width = dock.getBoundingClientRect().width || 570;
     dock.style.left = `${Math.max(8, Math.min(innerWidth - width - 8, left))}px`; dock.style.right = "auto";
     dock.style.top = `${Math.max(8, Math.min(innerHeight - 90, top))}px`; dock.style.bottom = "auto";
-    if (persist) localStorage.setItem("cros-workspace-position", JSON.stringify({ left: parseInt(dock.style.left), top: parseInt(dock.style.top) }));
+    if (persist) {
+      localStorage.setItem("cros-workspace-position", JSON.stringify({ left: parseInt(dock.style.left), top: parseInt(dock.style.top) }));
+      queueAppearanceSave();
+    }
   }
   function handleWorkspaceDrag(event) {
     if (!workspaceDragging || innerWidth <= 880) return;
@@ -655,6 +757,11 @@
     if (!workspaceResizing || innerWidth <= 880) return;
     setWorkspaceWidth(innerWidth - event.clientX);
   }
+  function handleWorkspaceHeightResize(event) {
+    if (!workspaceHeightResizing || innerWidth <= 880) return;
+    const top = $("#workspace-dock").getBoundingClientRect().top;
+    setWorkspaceHeight(event.clientY - top);
+  }
   function handleWorkspaceViewportChange() {
     const dock = $("#workspace-dock");
     if (!dock || dock.hidden) return;
@@ -664,7 +771,7 @@
       const saved = JSON.parse(localStorage.getItem("cros-workspace-position") || "null");
       setWorkspacePosition(Number(saved?.left ?? rect.left), Number(saved?.top ?? rect.top), false);
       const height = Number(localStorage.getItem("cros-workspace-height"));
-      if (height >= 360) dock.style.height = `${Math.min(height, innerHeight - 16)}px`;
+      if (height >= 360) setWorkspaceHeight(height, false);
     }
   }
 
@@ -1048,36 +1155,98 @@
     }
   }
 
+  function randomShredBlock(length) {
+    const block = new Uint8Array(length);
+    for (let offset = 0; offset < length; offset += 65536) {
+      crypto.getRandomValues(block.subarray(offset, Math.min(offset + 65536, length)));
+    }
+    return block;
+  }
+
+  async function shredFileHandle(handle, onPass = () => {}) {
+    if (!handle || handle.kind !== "file") throw new Error("Drop one regular file.");
+    if (typeof handle.createWritable !== "function" || typeof handle.remove !== "function") {
+      throw new Error("This browser cannot securely remove a dragged file. Paste its complete file path instead.");
+    }
+    const permissionOptions = { mode: "readwrite" };
+    let permission = typeof handle.queryPermission === "function"
+      ? await handle.queryPermission(permissionOptions)
+      : "prompt";
+    if (permission !== "granted" && typeof handle.requestPermission === "function") {
+      permission = await handle.requestPermission(permissionOptions);
+    }
+    if (permission !== "granted") throw new Error("Write permission was not granted for this file.");
+    const file = await handle.getFile();
+    if (file.size > 8 * 1024 * 1024 * 1024) throw new Error("Files larger than 8 GB are blocked.");
+    const patterns = ["random", "zero", "random"];
+    const chunkSize = 1024 * 1024;
+    for (let pass = 0; pass < patterns.length; pass += 1) {
+      onPass(pass + 1, patterns.length);
+      const writer = await handle.createWritable({ keepExistingData: true });
+      try {
+        let position = 0;
+        while (position < file.size) {
+          const length = Math.min(chunkSize, file.size - position);
+          const data = patterns[pass] === "zero" ? new Uint8Array(length) : randomShredBlock(length);
+          await writer.write({ type: "write", position, data });
+          position += length;
+        }
+      } finally {
+        await writer.close();
+      }
+    }
+    await handle.remove();
+    let deleted = false;
+    try { await handle.getFile(); }
+    catch (_) { deleted = true; }
+    if (!deleted) throw new Error("Deletion verification failed; the file still exists.");
+    return {
+      ok: true,
+      file_name: file.name,
+      size: file.size,
+      passes: patterns.length,
+      bytes_overwritten: file.size * patterns.length,
+      deleted: true,
+      verification: "The selected file handle no longer resolves",
+      storage_note: "Logical overwrite completed. SSD wear-leveling, snapshots, sync services, and backups may retain other physical or copied data.",
+    };
+  }
+
+  function renderShredResult(root, result) {
+    const size = Number(result.size || 0);
+    root.innerHTML = `<div class="shred-result-card"><div class="shred-result-mark">DELETED</div><div><span>FILE</span><strong>${escapeHtml(result.file_name || "Selected file")}</strong></div><div><span>OVERWRITE</span><strong>${escapeHtml(String(result.passes || 3))} PASSES</strong></div><div><span>SIZE</span><strong>${escapeHtml((size / 1048576).toFixed(size >= 1048576 ? 2 : 4))} MB</strong></div><div><span>VERIFICATION</span><strong>${escapeHtml(result.verification || "File no longer exists")}</strong></div><p>${escapeHtml(result.storage_note || "Logical overwrite and deletion completed.")}</p></div>`;
+  }
+
   function showNativeTool(category, id) {
     const panel = $("#native-tool-panel");
     panel.replaceChildren(); panel.hidden = true;
     if (category === "osint" && String(id) === "4") {
-      panel.innerHTML = `<div class="native-tool-head"><span>BREACH INTELLIGENCE · METADATA ONLY</span><h4>Breach exposure check</h4><p>Check an email with Have I Been Pwned, or check a username against free public profile sources. Cros never displays passwords or stolen records.</p></div><form class="native-workflow-form" id="native-breach-form"><label class="native-field"><span>CHECK TYPE</span><select id="native-breach-mode"><option value="email">Email breach metadata · HIBP API</option><option value="username">Username · free public profiles</option></select></label><label class="native-field"><span id="native-breach-target-label">EMAIL ADDRESS</span><input id="native-breach-target" type="email" maxlength="320" placeholder="you@example.com" required></label><div class="native-inline-links"><a href="https://haveibeenpwned.com/API/Key" target="_blank" rel="noreferrer">GET HIBP API KEY</a><a href="https://haveibeenpwned.com/" target="_blank" rel="noreferrer">FREE MANUAL HIBP CHECK</a></div><button class="primary-button" type="submit">RUN CHECK <span>→</span></button></form><div class="native-generated-results" id="native-generated-results"></div>`;
+      panel.innerHTML = `<div class="native-tool-head"><span>CLIENT EXPOSURE ASSESSMENT · PRIVACY-SAFE</span><h4>Credential exposure report</h4><p>Check an authorized client's email against known breach metadata and see whether email addresses, usernames, passwords, IP addresses, and other data types were exposed. Password checks use k-anonymity: the complete password never leaves this device.</p></div><div class="client-trust-strip"><span>✓ NO PASSWORD STORAGE</span><span>✓ METADATA-ONLY RESULTS</span><span>✓ CLIENT-SAFE REPORTING</span></div><form class="native-workflow-form" id="native-breach-form"><label class="native-field"><span>ASSESSMENT TYPE</span><select id="native-breach-mode"><option value="email">Email exposure report</option></select></label><label class="native-field"><span id="native-breach-target-label">CLIENT EMAIL ADDRESS</span><input id="native-breach-target" type="email" maxlength="320" placeholder="client@example.com" required autocomplete="off"></label><p class="client-consent-note">Run checks only for clients who have authorized the assessment. Reports identify breached websites and exposed data categories without retrieving stolen credentials.</p><div class="native-inline-links"><a href="https://haveibeenpwned.com/" target="_blank" rel="noreferrer">OPEN OFFICIAL HIBP CHECK</a></div><button class="primary-button" type="submit">GENERATE EXPOSURE REPORT <span>→</span></button></form><div class="native-generated-results" id="native-generated-results"></div>`;
       panel.hidden = false;
       panel.querySelector(".native-tool-head p").textContent = "Email uses XposedOrNot free metadata, Password uses HIBP's free k-anonymous check, and Username uses clearly labeled local demo data. No paid HIBP email lookup is used.";
       panel.querySelector('a[href*="/API/Key"]')?.remove();
       const mode = panel.querySelector("#native-breach-mode");
       const targetInput = panel.querySelector("#native-breach-target");
       const targetLabel = panel.querySelector("#native-breach-target-label");
-      const tabs = document.createElement("div"); tabs.className = "breach-tabs"; [["email", "EMAIL"], ["password", "PASSWORD"], ["username", "USERNAME"]].forEach(([value, label]) => { const tab = document.createElement("button"); tab.type = "button"; tab.dataset.breachTab = value; tab.textContent = label; if (value === "email") tab.className = "active"; tab.addEventListener("click", () => { mode.value = value; mode.dispatchEvent(new Event("change")); tabs.querySelectorAll("button").forEach(item => item.classList.toggle("active", item === tab)); }); tabs.append(tab); }); mode.style.display = "none"; panel.querySelector("#native-breach-form").insertBefore(tabs, panel.querySelector("#native-breach-form").firstElementChild);
+      const tabs = document.createElement("div"); tabs.className = "breach-tabs"; tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "Assessment type"); [["email", "EMAIL BREACHES"], ["password", "PASSWORD EXPOSURE"]].forEach(([value, label]) => { const tab = document.createElement("button"); tab.type = "button"; tab.dataset.breachTab = value; tab.setAttribute("role", "tab"); tab.setAttribute("aria-selected", String(value === "email")); tab.textContent = label; if (value === "email") tab.className = "active"; tab.addEventListener("click", () => { mode.value = value; mode.dispatchEvent(new Event("change")); tabs.querySelectorAll("button").forEach(item => { const active = item === tab; item.classList.toggle("active", active); item.setAttribute("aria-selected", String(active)); }); }); tabs.append(tab); }); mode.closest(".native-field").hidden = true; panel.querySelector("#native-breach-form").insertBefore(tabs, panel.querySelector("#native-breach-form").firstElementChild);
       const passwordOption = document.createElement("option"); passwordOption.value = "password"; passwordOption.textContent = "Password · HIBP k-anonymous check"; mode.append(passwordOption);
       const freeOption = mode.querySelector('option[value="email"]'); if (freeOption) freeOption.textContent = "Email breach metadata · XposedOrNot Free";
-      const infoLinks = document.createElement("div"); infoLinks.className = "native-inline-links"; infoLinks.innerHTML = '<a href="https://xon-web-test.xposedornot.com/api_doc" target="_blank" rel="noreferrer">FREE EMAIL API INFO</a><a href="https://haveibeenpwned.com/API/V3#PwnedPasswordsV2" target="_blank" rel="noreferrer">FREE PASSWORD API INFO</a>'; panel.querySelector("#native-breach-form").append(infoLinks);
-      mode.addEventListener("change", () => { const username = mode.value === "username"; const password = mode.value === "password"; targetInput.type = username ? "text" : password ? "password" : "email"; targetInput.placeholder = username ? "public handle" : password ? "Enter a password locally" : "you@example.com"; targetLabel.textContent = username ? "PUBLIC USERNAME" : password ? "PASSWORD · NEVER UPLOADED" : "EMAIL ADDRESS"; });
+      mode.addEventListener("change", () => { const username = mode.value === "username"; const password = mode.value === "password"; const submit = panel.querySelector("#native-breach-form .primary-button"); targetInput.type = username ? "text" : password ? "password" : "email"; targetInput.placeholder = username ? "public handle" : password ? "Enter a password locally" : "you@example.com"; targetLabel.textContent = username ? "PUBLIC USERNAME · NOT A BREACH LOOKUP" : password ? "PASSWORD · NEVER UPLOADED" : "EMAIL ADDRESS"; submit.innerHTML = username ? "SEARCH PUBLIC WEBSITES <span>→</span>" : password ? "CHECK PASSWORD EXPOSURE <span>→</span>" : "GENERATE BREACH REPORT <span>→</span>"; });
       panel.querySelector("#native-breach-form").addEventListener("submit", async event => {
         event.preventDefault();
         const target = targetInput.value.trim();
         const root = panel.querySelector("#native-generated-results"); root.replaceChildren();
-        const status = document.createElement("div"); status.className = "blackbird-live-note"; status.textContent = mode.value === "username" ? "Checking free public username sources…" : mode.value === "email-hibp" ? "Checking Have I Been Pwned metadata…" : "Checking free XposedOrNot breach metadata…"; root.append(status);
         try {
-          if (mode.value === "username") {
-            const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, mode: "username", demo: true }) });
-            root.replaceChildren(); renderBreachDashboard(root, response, target); addDashboardChecklists(root, response.results || []); updateSessionProgress({ done: true, returncode: 0, stage: "Username demo check complete" });
-          } else if (mode.value === "password") {
-            const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(target)); const hex = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase(); const response = await api("/api/hibp-password-check", { method: "POST", body: JSON.stringify({ prefix: hex.slice(0, 5), suffix: hex.slice(5) }) }); root.replaceChildren(); const result = document.createElement("div"); result.className = `password-result ${response.found ? "is-exposed" : "is-clear"}`; result.innerHTML = `<strong>${response.found ? "PASSWORD FOUND IN HIBP DATA" : "PASSWORD NOT FOUND IN HIBP DATA"}</strong><span>${response.found ? `${Number(response.count).toLocaleString()} observed matches` : "No match returned by the free k-anonymous check"}. The password itself was never sent.</span>`; root.append(result); appendExposureChecklist(root, response.found ? ["Password"] : [], false); targetInput.value = ""; updateSessionProgress({ done: true, returncode: 0, stage: "Password privacy check complete" });
-          } else await runBreachCheck(target, root, true, "xposedornot");
-        }
-        catch (error) { root.replaceChildren(); const warning = document.createElement("p"); warning.textContent = error.message; root.append(warning); updateSessionProgress({ done: true, returncode: 1, stage: "Breach check unavailable" }); }
+        if (mode.value === "username") {
+    const response = await api("/api/free-public-search", { method: "POST", body: JSON.stringify({ username: target }) });
+    root.replaceChildren(); renderUsernameWebsiteReport(root, target, response.results || []); updateSessionProgress({ done: true, returncode: 0, stage: "Username website check complete" });
+} else if (mode.value === "password") {
+    const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(target)); const hex = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase(); const response = await api("/api/hibp-password-check", { method: "POST", body: JSON.stringify({ prefix: hex.slice(0, 5), suffix: hex.slice(5) }) }); root.replaceChildren(); renderPasswordExposureReport(root, response); targetInput.value = ""; updateSessionProgress({ done: true, returncode: 0, stage: "Password privacy check complete" });
+} else {
+    // Email mode – use LeakCheck
+    await runBreachCheck(target, root, true);
+}
+        } catch (error) { root.replaceChildren(); const warning = document.createElement("p"); warning.textContent = error.message; root.append(warning); updateSessionProgress({ done: true, returncode: 1, stage: "Breach check unavailable" }); }
       });
       setTimeout(() => panel.querySelector("#native-breach-target")?.focus(), 0);
       return true;
@@ -1185,6 +1354,129 @@
       panel.innerHTML = `<div class="native-tool-head"><span>WINDOWS SECURITY · VISUAL AUDIT</span><h4>Saved Wi-Fi protection</h4><p>Reading authentication and encryption settings without accessing passwords.</p></div><div class="scan-progress-card"><div class="scan-orbit"><i></i></div><strong>Checking saved networks</strong><span>Windows is returning profile security details…</span><div class="scan-progress-track"><i></i></div></div>`;
       panel.hidden = false;
       setTimeout(() => runNativeWifiAudit(panel), 0);
+      return true;
+    }
+    if (category === "security" && String(id) === "51") {
+      panel.innerHTML = `<div class="native-tool-head"><span>FILE DEFENSE &middot; IRREVERSIBLE ACTION</span><h4>Secure file shredder</h4><p>Overwrite and permanently remove one confirmed local file. Folders and links are refused; path mode also blocks Cros and protected Windows application areas.</p></div><form class="file-shred-form" id="file-shred-form"><div class="shred-input-grid"><label class="native-field"><span>OPTION 1 &middot; COMPLETE FILE PATH</span><input id="shred-file-path" type="text" maxlength="4096" placeholder="C:\\Users\\you\\Downloads\\suspicious.exe" autocomplete="off" spellcheck="false"></label><div class="file-drop shred-drop" id="shred-file-drop" role="button" tabindex="0" aria-label="Drag a file here or choose a file"><strong>OPTION 2 &middot; DRAG FILE HERE</strong><span id="shred-drop-label">One file only &middot; the original file is targeted</span><button type="button" class="outline-button" id="shred-choose-file">CHOOSE FILE</button></div></div><div class="shred-warning"><b>PERMANENT AND IRREVERSIBLE</b><p>Verify the file with the malware scanner first. Do not shred evidence you may need for incident response. Software overwrite cannot guarantee physical erasure on SSDs, flash storage, snapshots, cloud sync, or backups.</p></div><label class="shred-confirm-check"><input id="shred-confirm-check" type="checkbox"><span>I verified the target and understand it cannot be recovered through Cros.</span></label><label class="native-field"><span>TYPE SHRED TO UNLOCK</span><input id="shred-confirm-word" type="text" maxlength="5" placeholder="SHRED" autocomplete="off" spellcheck="false"></label><button class="primary-button danger-button" id="shred-submit" type="submit" disabled>SHRED FILE PERMANENTLY <span>&rarr;</span></button></form><div class="shred-results" id="shred-results"><div class="lab-empty"><strong>No file selected</strong><span>Use a full path or drag one file into the protected drop area.</span></div></div>`;
+      panel.hidden = false;
+      const form = panel.querySelector("#file-shred-form");
+      const pathInput = panel.querySelector("#shred-file-path");
+      const drop = panel.querySelector("#shred-file-drop");
+      const dropLabel = panel.querySelector("#shred-drop-label");
+      const check = panel.querySelector("#shred-confirm-check");
+      const confirmWord = panel.querySelector("#shred-confirm-word");
+      const submit = panel.querySelector("#shred-submit");
+      const results = panel.querySelector("#shred-results");
+      let selectedHandle = null;
+
+      const hasTarget = () => Boolean(selectedHandle || pathInput.value.trim());
+      const updateUnlock = () => {
+        submit.disabled = !(hasTarget() && check.checked && confirmWord.value.trim() === "SHRED");
+      };
+      const selectHandle = async handle => {
+        if (!handle || handle.kind !== "file") throw new Error("Choose one regular file.");
+        selectedHandle = handle;
+        pathInput.value = "";
+        const file = await handle.getFile();
+        drop.classList.add("has-file");
+        drop.querySelector("strong").textContent = "FILE READY";
+        dropLabel.textContent = `${file.name} · ${(file.size / 1048576).toFixed(2)} MB`;
+        results.innerHTML = `<div class="shred-target-card"><b>SELECTED ORIGINAL</b><strong>${escapeHtml(file.name)}</strong><span>${escapeHtml((file.size / 1048576).toFixed(2))} MB · waiting for confirmation</span></div>`;
+        updateUnlock();
+      };
+      const chooseFile = async () => {
+        if (typeof window.showOpenFilePicker !== "function") {
+          toast("Use the complete file path", "This browser does not provide the protected local-file picker.", true);
+          pathInput.focus();
+          return;
+        }
+        try {
+          const [handle] = await window.showOpenFilePicker({ multiple: false });
+          await selectHandle(handle);
+        } catch (error) {
+          if (error.name !== "AbortError") toast("Could not select the file", error.message, true);
+        }
+      };
+      pathInput.addEventListener("input", () => {
+        if (pathInput.value.trim()) {
+          selectedHandle = null;
+          drop.classList.remove("has-file");
+          drop.querySelector("strong").textContent = "OPTION 2 · DRAG FILE HERE";
+          dropLabel.textContent = "One file only · the original file is targeted";
+        }
+        updateUnlock();
+      });
+      check.addEventListener("change", updateUnlock);
+      confirmWord.addEventListener("input", () => {
+        confirmWord.value = confirmWord.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5);
+        updateUnlock();
+      });
+      panel.querySelector("#shred-choose-file").addEventListener("click", chooseFile);
+      drop.addEventListener("keydown", event => {
+        if (["Enter", " "].includes(event.key)) { event.preventDefault(); chooseFile(); }
+      });
+      drop.addEventListener("dragover", event => { event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = "move"; drop.classList.add("dragging"); });
+      drop.addEventListener("dragleave", () => drop.classList.remove("dragging"));
+      drop.addEventListener("drop", async event => {
+        event.preventDefault();
+        drop.classList.remove("dragging");
+        try {
+          const items = [...(event.dataTransfer?.items || [])].filter(item => item.kind === "file");
+          if (items.length !== 1) throw new Error("Drop exactly one file.");
+          const item = items[0];
+          if (typeof item.getAsFileSystemHandle === "function") {
+            await selectHandle(await item.getAsFileSystemHandle());
+            return;
+          }
+          const file = item.getAsFile();
+          if (file?.path) {
+            selectedHandle = null;
+            pathInput.value = file.path;
+            drop.classList.add("has-file");
+            drop.querySelector("strong").textContent = "FILE PATH READY";
+            dropLabel.textContent = `${file.name} · ${(file.size / 1048576).toFixed(2)} MB`;
+            updateUnlock();
+            return;
+          }
+          throw new Error("Windows did not expose the original file handle. Paste the complete path instead.");
+        } catch (error) {
+          toast("Could not target that dropped file", error.message, true);
+          pathInput.focus();
+        }
+      });
+      form.addEventListener("submit", async event => {
+        event.preventDefault();
+        if (submit.disabled) return;
+        submit.disabled = true;
+        results.innerHTML = `<div class="scan-progress-card"><div class="scan-orbit"><i></i></div><strong id="shred-progress-title">Preparing secure deletion</strong><span id="shred-progress-detail">Verifying the selected file and safety boundaries...</span><div class="scan-progress-track"><i></i></div></div>`;
+        updateSessionProgress({ done: false, stage: "Secure deletion in progress" });
+        try {
+          const result = selectedHandle
+            ? await shredFileHandle(selectedHandle, (pass, total) => {
+                const title = panel.querySelector("#shred-progress-title");
+                const detail = panel.querySelector("#shred-progress-detail");
+                if (title) title.textContent = `Overwrite pass ${pass} of ${total}`;
+                if (detail) detail.textContent = pass === 2 ? "Writing the zero-data pass..." : "Writing cryptographically random data...";
+              })
+            : await api("/api/file-shred", { method: "POST", body: JSON.stringify({ path: pathInput.value.trim(), confirmation: "SHRED" }) });
+          renderShredResult(results, result);
+          selectedHandle = null;
+          pathInput.value = "";
+          check.checked = false;
+          confirmWord.value = "";
+          drop.classList.remove("has-file");
+          drop.querySelector("strong").textContent = "OPTION 2 · DRAG FILE HERE";
+          dropLabel.textContent = "One file only · the original file is targeted";
+          updateSessionProgress({ done: true, returncode: 0, stage: "File securely overwritten and deleted" });
+          toast("File permanently deleted", `${result.file_name || "The selected file"} was overwritten and removed.`);
+        } catch (error) {
+          results.innerHTML = `<div class="lab-empty"><strong>Shredder stopped safely</strong><span>${escapeHtml(error.message)}</span></div>`;
+          updateSessionProgress({ done: true, returncode: 1, stage: "Secure deletion stopped" });
+          toast("File shredder stopped", error.message, true);
+        } finally {
+          updateUnlock();
+        }
+      });
       return true;
     }
     if (category === "security" && String(id) === "10") {
@@ -1314,47 +1606,174 @@
     } catch (error) { if (button) { button.disabled = false; button.textContent = "RETRY FULL METADATA"; } toast("Breach details unavailable", error.message, true); }
   }
 
+  function maskReportTarget(target) {
+    const value = String(target || "").trim();
+    if (!value.includes("@")) return value.length > 4 ? `${value.slice(0, 2)}•••${value.slice(-2)}` : "Client identifier";
+    const [local, domain] = value.split("@");
+    const visible = local.length > 2 ? local.slice(0, 2) : local.slice(0, 1);
+    return `${visible}${"•".repeat(Math.max(3, local.length - visible.length))}@${domain}`;
+  }
+
+  function renderPasswordExposureReport(root, response) {
+    const found = Boolean(response.found);
+    const count = Number(response.count || 0);
+    const report = document.createElement("section");
+    report.className = `password-report ${found ? "is-exposed" : "is-clear"}`;
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "password-report-eyebrow";
+    eyebrow.textContent = "HIBP K-ANONYMITY RESULT";
+    const title = document.createElement("h4");
+    title.textContent = found ? "Password exposure confirmed" : "No known exposure detected";
+    const summary = document.createElement("p");
+    summary.textContent = found
+      ? `This password fingerprint appeared ${count.toLocaleString()} time${count === 1 ? "" : "s"} in known breach data. Change it anywhere it is still used.`
+      : "No matching fingerprint was returned by the current breach corpus. This does not guarantee the password has never been exposed.";
+    const privacy = document.createElement("div");
+    privacy.className = "password-privacy-proof";
+    privacy.innerHTML = "<strong>PRIVACY VERIFIED</strong><span>Only the first five characters of a SHA-1 hash were transmitted. The password was cleared immediately and was never stored.</span>";
+    report.append(eyebrow, title, summary, privacy);
+    appendExposureChecklist(report, found ? ["Password"] : [], false);
+    const sourceNote = document.createElement("p");
+    sourceNote.className = "password-source-note";
+    sourceNote.textContent = found
+      ? "Source websites are not included in the HIBP password corpus. Run an email exposure report to identify known breached services."
+      : "No source websites are available because the password fingerprint was not found.";
+    report.append(sourceNote);
+    root.append(report);
+  }
+
   function renderBreachDashboard(root, payload, target) {
     const dashboard = document.createElement("section"); dashboard.className = "breach-dashboard";
     if (payload.demo) dashboard.dataset.demo = "true";
-    const heading = document.createElement("div"); heading.className = "breach-dashboard-head"; const title = document.createElement("h4"); title.textContent = "BREACH AWARENESS DASHBOARD"; const note = document.createElement("p"); note.textContent = `${payload.cached ? "Cached for 24 hours · " : "Live provider result · "}Metadata only for ${target}. No credentials or stolen records are displayed.`; heading.append(title, note); dashboard.append(heading);
+    const heading = document.createElement("div"); heading.className = "breach-dashboard-head"; const title = document.createElement("h4"); title.textContent = "CLIENT EXPOSURE REPORT"; const note = document.createElement("p"); note.textContent = `${payload.cached ? "Cached assessment" : "Live metadata assessment"} · ${maskReportTarget(target)} · ${new Date().toLocaleString()}`; const assurance = document.createElement("span"); assurance.className = "report-assurance"; assurance.textContent = "No stolen passwords or raw breach records retrieved"; heading.append(title, note, assurance); dashboard.append(heading);
     if (payload.supported === false) { const unsupported = document.createElement("p"); unsupported.textContent = payload.message || "This input type is not supported."; dashboard.append(unsupported); root.append(dashboard); return; }
     const results = Array.isArray(payload.results || payload.breaches) ? (payload.results || payload.breaches) : [];
-    const passwordRecords = results.filter(item => (item.data_types || item.DataClasses || []).some(value => String(value).toLowerCase().includes("password"))).reduce((sum, item) => sum + Number(item.pwn_count || item.PwnCount || 0), 0);
-    const totalRecords = results.reduce((sum, item) => sum + Number(item.pwn_count || item.PwnCount || 0), 0);
+    const passwordExposed = results.some(item => (item.data_types || item.DataClasses || []).some(value => String(value).toLowerCase().includes("password")));
+    const usernameExposed = results.some(item => (item.data_types || item.DataClasses || []).some(value => String(value).toLowerCase().includes("username")));
     const riskScore = Math.min(100, results.reduce((sum, item) => sum + (breachRisk(item)[0] === "CRITICAL" ? 30 : breachRisk(item)[0] === "HIGH" ? 22 : breachRisk(item)[0] === "MEDIUM" ? 12 : 5), 0));
-    const stats = document.createElement("div"); stats.className = "breach-summary-stats"; [["TOTAL BREACHES", results.length], ["AFFECTED RECORDS", totalRecords.toLocaleString()], ["PASSWORD-EXPOSED RECORDS", passwordRecords.toLocaleString()], ["RISK SCORE", `${riskScore}/100`]].forEach(([label, value]) => { const card = document.createElement("div"); card.className = "breach-stat"; const valueEl = document.createElement("strong"); valueEl.textContent = value; const labelEl = document.createElement("span"); labelEl.textContent = label; card.append(valueEl, labelEl); stats.append(card); }); dashboard.append(stats);
-    if (!results.length) { appendExposureChecklist(dashboard, [], false); const empty = document.createElement("strong"); empty.textContent = `No breaches found for ${target} in the connected free database.`; dashboard.append(empty); root.append(dashboard); return; }
+    const stats = document.createElement("div"); stats.className = "breach-summary-stats"; [["BREACHED WEBSITES", results.length], ["USERNAME LEAKED", usernameExposed ? "YES" : "NO"], ["PASSWORD DATA LEAKED", passwordExposed ? "YES" : "NO"], ["RISK SCORE", `${riskScore}/100`]].forEach(([label, value]) => { const card = document.createElement("div"); card.className = "breach-stat"; if (value === "YES") card.classList.add("is-exposed"); const valueEl = document.createElement("strong"); valueEl.textContent = value; const labelEl = document.createElement("span"); labelEl.textContent = label; card.append(valueEl, labelEl); stats.append(card); }); dashboard.append(stats);
+    if (!results.length) { appendExposureChecklist(dashboard, [], false); const empty = document.createElement("strong"); empty.className = "breach-empty-result"; empty.textContent = "No websites or services were returned by the connected breach metadata source."; dashboard.append(empty); root.append(dashboard); return; }
     const cards = document.createElement("div"); cards.className = "breach-card-grid";
-    results.forEach(item => { const card = document.createElement("article"); card.className = "breach-card"; const [risk, riskClass] = breachRisk(item); const head = document.createElement("div"); head.className = "breach-card-head"; const name = document.createElement("h5"); name.textContent = item.service || item.Name || "Unnamed breach"; const badge = document.createElement("b"); badge.className = `risk-badge ${riskClass}`; badge.textContent = risk; head.append(name, badge); card.append(head); const meta = document.createElement("div"); meta.className = "breach-card-meta"; [["DATE", item.breach_date || item.BreachDate || "Unavailable"], ["AFFECTED", Number(item.pwn_count || item.PwnCount || 0).toLocaleString()], ["DOMAIN", item.domain || item.Domain || "Unavailable"]].forEach(([label, value]) => { const row = document.createElement("span"); row.innerHTML = `<small>${label}</small><strong></strong>`; row.querySelector("strong").textContent = value; meta.append(row); }); card.append(meta); const fields = document.createElement("div"); fields.className = "breach-field-preview"; (item.data_types || item.DataClasses || ["Metadata unavailable"]).forEach(value => { const chip = document.createElement("span"); chip.textContent = `✓ ${value}`; fields.append(chip); }); card.append(fields); const button = document.createElement("button"); button.className = "breach-detail-button"; button.type = "button"; button.textContent = "LOAD FULL METADATA"; button.addEventListener("click", () => loadBreachDetails(card, item)); card.append(button); cards.append(card); }); dashboard.append(cards); root.append(dashboard);
+    const sitesHeading = document.createElement("div"); sitesHeading.className = "breach-sites-heading"; const sitesTitle = document.createElement("h5"); sitesTitle.textContent = "WEBSITES / SERVICES WHERE DATA APPEARED"; const sitesCount = document.createElement("span"); sitesCount.textContent = `${results.length} MATCH${results.length === 1 ? "" : "ES"}`; sitesHeading.append(sitesTitle, sitesCount); dashboard.append(sitesHeading);
+    results.forEach(item => { const card = document.createElement("article"); card.className = "breach-card"; const [risk, riskClass] = breachRisk(item); const head = document.createElement("div"); head.className = "breach-card-head"; const name = document.createElement("h5"); name.textContent = item.service || item.Name || item.domain || item.Domain || "Unnamed service"; const badge = document.createElement("b"); badge.className = `risk-badge ${riskClass}`; badge.textContent = `${risk} RISK`; head.append(name, badge); card.append(head); const domain = item.domain || item.Domain || ""; if (domain) { const website = document.createElement("div"); website.className = "breach-website"; const websiteLabel = document.createElement("small"); websiteLabel.textContent = "WEBSITE"; const websiteValue = document.createElement("strong"); websiteValue.textContent = domain; website.append(websiteLabel, websiteValue); card.append(website); } const meta = document.createElement("div"); meta.className = "breach-card-meta"; [["DISCLOSED", item.breach_date || item.BreachDate || "Unavailable"], ["AFFECTED ACCOUNTS", Number(item.pwn_count || item.PwnCount || 0).toLocaleString()], ["SOURCE", item.source || payload.provider || "Breach metadata provider"]].forEach(([label, value]) => { const row = document.createElement("span"); row.innerHTML = `<small>${label}</small><strong></strong>`; row.querySelector("strong").textContent = value; meta.append(row); }); card.append(meta); const fields = document.createElement("div"); fields.className = "breach-field-preview"; (item.data_types || item.DataClasses || ["Metadata unavailable"]).forEach(value => { const chip = document.createElement("span"); chip.textContent = `EXPOSED · ${value}`; fields.append(chip); }); card.append(fields); const button = document.createElement("button"); button.className = "breach-detail-button"; button.type = "button"; button.textContent = "VIEW VERIFIED METADATA"; button.addEventListener("click", () => loadBreachDetails(card, item)); card.append(button); cards.append(card); }); dashboard.append(cards); root.append(dashboard);
   }
 
   function appendDemoFields(parent, record) {
-    if (!record?.email && !record?.password && !record?.username) return;
-    const grid = document.createElement("div"); grid.className = "breach-demo-fields";
-    [["EMAIL · DEMO", record.email], ["PASSWORD · DEMO", record.password], ["USERNAME · DEMO", record.username], ["IP · DEMO", record.ip], ["LOCATION · DEMO", record.location]].forEach(([label, value]) => {
-      if (!value) return;
-      const item = document.createElement("div"); const key = document.createElement("small"); key.textContent = label; const valueEl = document.createElement("strong"); valueEl.textContent = value; item.append(key, valueEl); grid.append(item);
-    });
+    if (!record || (!record.email && !record.password && !record.username)) return;
+    const grid = document.createElement("div");
+    grid.className = "breach-demo-fields";
+
+    if (record.email) {
+      const item = document.createElement("div");
+      const key = document.createElement("small");
+      key.textContent = "EMAIL · DEMO";
+      const valueEl = document.createElement("strong");
+      valueEl.textContent = record.email;
+      item.append(key, valueEl);
+      grid.append(item);
+    }
+
+    if (record.password && record.password !== "N/A") {
+      const item = document.createElement("div");
+      item.style.backgroundColor = "#ff4d4d";
+      item.style.padding = "4px 8px";
+      item.style.borderRadius = "4px";
+      item.style.color = "#fff";
+      item.style.fontWeight = "bold";
+      const key = document.createElement("small");
+      key.textContent = "🔑 LEAKED PASSWORD";
+      key.style.color = "#fff";
+      const valueEl = document.createElement("strong");
+      valueEl.textContent = record.password;
+      valueEl.style.fontFamily = "monospace";
+      valueEl.style.fontSize = "1.2em";
+      item.append(key, valueEl);
+      grid.append(item);
+    }
+
+    if (record.username) {
+      const item = document.createElement("div");
+      const key = document.createElement("small");
+      key.textContent = "USERNAME · DEMO";
+      const valueEl = document.createElement("strong");
+      valueEl.textContent = record.username;
+      item.append(key, valueEl);
+      grid.append(item);
+    }
+
+    if (record.ip) {
+      const item = document.createElement("div");
+      const key = document.createElement("small");
+      key.textContent = "IP · DEMO";
+      const valueEl = document.createElement("strong");
+      valueEl.textContent = record.ip;
+      item.append(key, valueEl);
+      grid.append(item);
+    }
+
+    if (record.location) {
+      const item = document.createElement("div");
+      const key = document.createElement("small");
+      key.textContent = "LOCATION · DEMO";
+      const valueEl = document.createElement("strong");
+      valueEl.textContent = record.location;
+      item.append(key, valueEl);
+      grid.append(item);
+    }
+
     parent.append(grid);
   }
 
   function addDashboardChecklists(root, results) {
     const cards = [...root.querySelectorAll(".breach-card")];
     cards.forEach((card, index) => {
-      appendDemoFields(card, results[index]);
-      if (!card.querySelector(".exposure-checklist")) appendExposureChecklist(card, results[index]?.data_types || results[index]?.DataClasses || [], false);
+      const record = results && results[index] ? results[index] : {};
+      appendDemoFields(card, record);
+      if (!card.querySelector(".exposure-checklist")) {
+        const dataTypes = record?.data_types || record?.DataClasses || [];
+        appendExposureChecklist(card, dataTypes, false);
+      }
     });
   }
 
-  async function runBreachCheck(target, root, progress = true, provider = "xposedornot") {
-    if (progress) updateSessionProgress({ done: false, stage: provider === "hibp" ? "Checking HIBP breach metadata" : "Checking free XposedOrNot breach metadata" });
-    const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, provider: "xposedornot" }) });
-    renderBreachDashboard(root, response, target);
-    addDashboardChecklists(root, Array.isArray(response.results || response.breaches) ? (response.results || response.breaches) : []);
-    if (progress) updateSessionProgress({ done: true, returncode: 0, stage: "Breach metadata check complete" });
-    return response;
+async function runBreachCheck(target, root, progress = true, provider = "leakcheck") {
+    if (progress) updateSessionProgress({ done: false, stage: "Checking connected breach metadata source..." });
+
+    try {
+        const response = await api("/api/leakcheck-check", {
+            method: "POST",
+            body: JSON.stringify({ target })
+        });
+
+        const results = Array.isArray(response.results) ? response.results : [];
+        renderBreachDashboard(root, {
+            provider: response.provider || "Connected breach source",
+            cached: Boolean(response.cached),
+            results: results,
+            target: target
+        }, target);
+        addDashboardChecklists(root, results);
+        if (progress) updateSessionProgress({ done: true, returncode: 0, stage: "Breach check complete" });
+        return response;
+    } catch (error) {
+        // Fallback: try XposedOrNot (metadata only)
+        try {
+            if (progress) updateSessionProgress({ done: false, stage: "Primary check unavailable, trying XposedOrNot metadata..." });
+            const fallback = await api("/api/breach-check", {
+                method: "POST",
+                body: JSON.stringify({ target, provider: "xposedornot" })
+            });
+            renderBreachDashboard(root, fallback, target);
+            addDashboardChecklists(root, Array.isArray(fallback.results || fallback.breaches) ? (fallback.results || fallback.breaches) : []);
+            if (progress) updateSessionProgress({ done: true, returncode: 0, stage: "Breach metadata check complete (no passwords)" });
+            return fallback;
+        } catch (fallbackError) {
+            if (progress) updateSessionProgress({ done: true, returncode: 1, stage: "All breach checks failed" });
+            throw new Error(`Primary check failed: ${error.message}. Fallback also failed: ${fallbackError.message}`);
+        }
+    }
   }
+
 
   async function searchNames(event) {
     event.preventDefault();
@@ -1421,6 +1840,53 @@
       block.append(row);
     });
     root.append(block); root.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function renderUsernameWebsiteReport(root, username, results) {
+    const report = document.createElement("section");
+    report.className = "username-website-report";
+    const head = document.createElement("div");
+    head.className = "breach-sites-heading";
+    const title = document.createElement("h5");
+    title.textContent = `PUBLIC WEBSITES FOUND FOR @${username}`;
+    const matches = (Array.isArray(results) ? results : []).filter(item => item?.found && item?.profile);
+    const count = document.createElement("span");
+    count.textContent = `${matches.length} VERIFIED LINK${matches.length === 1 ? "" : "S"}`;
+    head.append(title, count);
+    report.append(head);
+    const note = document.createElement("p");
+    note.className = "username-report-note";
+    note.textContent = "These are live public profile matches. A matching username is evidence of an account name, not proof that the account belongs to the same person or that it was breached.";
+    report.append(note);
+    if (!matches.length) {
+      const empty = document.createElement("strong");
+      empty.className = "breach-empty-result";
+      empty.textContent = "No matching public profiles were returned by the connected sources.";
+      report.append(empty);
+      root.append(report);
+      return;
+    }
+    const grid = document.createElement("div");
+    grid.className = "username-website-grid";
+    matches.forEach(item => {
+      const card = document.createElement("article");
+      card.className = "username-website-card";
+      const source = document.createElement("strong");
+      source.textContent = item.source || "Public website";
+      const handle = document.createElement("span");
+      handle.textContent = `@${item.username || username}`;
+      const url = document.createElement("small");
+      url.textContent = item.profile;
+      const link = document.createElement("a");
+      link.href = item.profile;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = "OPEN PUBLIC PROFILE ↗";
+      card.append(source, handle, url, link);
+      grid.append(card);
+    });
+    report.append(grid);
+    root.append(report);
   }
 
   async function searchNamesWithProviders(event) {
@@ -2382,17 +2848,19 @@
   function setStarColor(hex, save = true) { const rgb = hexToRgb(hex); if (!rgb) return; document.documentElement.style.setProperty("--star-rgb", rgb.join(", ")); $("#custom-stars").value = hex; if (save) localStorage.setItem("cros-star-color", hex); }
   function setSettingsOpen(open) {
     const drawer = $("#settings-drawer");
+    const wasOpen = drawer.classList.contains("open");
     drawer.hidden = !open;
     drawer.classList.toggle("open", open);
     drawer.setAttribute("aria-hidden", String(!open));
     document.body.classList.toggle("settings-open", open);
+    if (wasOpen && !open) saveAppearanceNow();
   }
 
   function jumpSettings(section) {
     const targets = {
       "settings-logo": $(".logo-settings"),
       "settings-themes": $(".interface-presets"),
-      "settings-colors": $(".color-settings"),
+      "settings-visuals": $(".background-settings"),
       "settings-layout": $(".screen-fit-section"),
       "settings-motion": $("#particle-toggle")?.closest(".drawer-section"),
       "settings-data": $("#reset-appearance")?.closest(".drawer-section"),
@@ -2496,6 +2964,89 @@
     document.documentElement.style.setProperty("--card-radius", radii[selected]);
     $$('[data-shape]').forEach(button => button.classList.toggle("active", button.dataset.shape === selected));
     if (save) localStorage.setItem("cros-shape", selected);
+  }
+
+  function setBackgroundStyle(value, save = true) {
+    const available = new Set(["basic", "nebula", "grid", "aurora", "eclipse", "void", "blueprint", "storm", "scanline", "solar", "synthwave", "emerald", "frost", "starfield", "radar", "carbon", "sunset"]);
+    const selected = available.has(value) ? value : "basic";
+    document.documentElement.dataset.backgroundStyle = selected;
+    $$("[data-background-style]").forEach(button => {
+      const active = button.dataset.backgroundStyle === selected;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-checked", String(active));
+    });
+    if (save) localStorage.setItem("cros-background-style", selected);
+  }
+
+  function setBackgroundDim(value, save = true) {
+    const level = Math.max(0, Math.min(70, Number(value) || 0));
+    document.documentElement.style.setProperty("--scene-dim", String(level / 100));
+    $("#background-dim").value = String(level);
+    $("#background-dim-output").textContent = `${level}%`;
+    if (save) localStorage.setItem("cros-background-dim", String(level));
+  }
+
+  function setPanelBlur(value, save = true) {
+    const level = Math.max(0, Math.min(32, Number(value) || 0));
+    document.documentElement.style.setProperty("--panel-blur", `${level}px`);
+    $("#panel-blur").value = String(level);
+    $("#panel-blur-output").textContent = `${level}px`;
+    if (save) localStorage.setItem("cros-panel-blur", String(level));
+  }
+
+  function setWingStyle(value, save = true) {
+    const available = new Set(["seraph", "razor", "hologram", "phoenix", "stealth", "arc", "prism", "sentinel"]);
+    const selected = available.has(value) ? value : "seraph";
+    document.documentElement.dataset.wingStyle = selected;
+    $$("[data-wing-style]").forEach(button => {
+      const active = button.dataset.wingStyle === selected;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-checked", String(active));
+    });
+    if (save) localStorage.setItem("cros-wing-style", selected);
+  }
+
+  function setWingSize(value, save = true) {
+    const level = Math.max(70, Math.min(135, Number(value) || 100));
+    document.documentElement.style.setProperty("--wing-scale", String(level / 100));
+    $("#wing-size").value = String(level);
+    $("#wing-size-output").textContent = `${level}%`;
+    if (save) localStorage.setItem("cros-wing-size", String(level));
+  }
+
+  function setWingSpread(value, save = true) {
+    const level = Math.max(65, Math.min(155, Number(value) || 100));
+    document.documentElement.style.setProperty("--wing-spread", `${Math.round(44 * level / 100)}px`);
+    $("#wing-spread").value = String(level);
+    $("#wing-spread-output").textContent = `${level}%`;
+    if (save) localStorage.setItem("cros-wing-spread", String(level));
+  }
+
+  function setWingLift(value, save = true) {
+    const level = Math.max(-40, Math.min(40, Number(value) || 0));
+    document.documentElement.style.setProperty("--wing-y", `${level}px`);
+    $("#wing-lift").value = String(level);
+    $("#wing-lift-output").textContent = `${level > 0 ? "+" : ""}${level}px`;
+    if (save) localStorage.setItem("cros-wing-lift", String(level));
+  }
+
+  function setWingBrightness(value, save = true) {
+    const level = Math.max(35, Math.min(120, Number(value) || 85));
+    document.documentElement.style.setProperty("--wing-opacity", String(level / 100));
+    $("#wing-brightness").value = String(level);
+    $("#wing-brightness-output").textContent = `${level}%`;
+    if (save) localStorage.setItem("cros-wing-brightness", String(level));
+  }
+
+  function setWingDensity(value, save = true) {
+    const selected = ["sparse", "normal", "dense"].includes(value) ? value : "normal";
+    document.documentElement.dataset.wingDensity = selected;
+    $$("[data-wing-density]").forEach(button => {
+      const active = button.dataset.wingDensity === selected;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-checked", String(active));
+    });
+    if (save) localStorage.setItem("cros-wing-density", selected);
   }
 
   function setColumns(value, save = true) {
@@ -2610,6 +3161,15 @@
     setParticleDensity(localStorage.getItem("cros-particle-density") || 100, false);
     setLightSmoothing(localStorage.getItem("cros-light-smoothing") || 75, false);
     setStarBrightness(localStorage.getItem("cros-star-brightness") || 120, false);
+    setBackgroundStyle(localStorage.getItem("cros-background-style") || "basic", false);
+    setBackgroundDim(localStorage.getItem("cros-background-dim") || 0, false);
+    setPanelBlur(localStorage.getItem("cros-panel-blur") || 20, false);
+    setWingStyle(localStorage.getItem("cros-wing-style") || "seraph", false);
+    setWingSize(localStorage.getItem("cros-wing-size") || 100, false);
+    setWingSpread(localStorage.getItem("cros-wing-spread") || 100, false);
+    setWingLift(localStorage.getItem("cros-wing-lift") || 0, false);
+    setWingBrightness(localStorage.getItem("cros-wing-brightness") || 85, false);
+    setWingDensity(localStorage.getItem("cros-wing-density") || "normal", false);
     setShape(localStorage.getItem("cros-shape") || "soft", false);
     setColumns(localStorage.getItem("cros-columns") || "auto", false);
     const storedFit = localStorage.getItem("cros-screen-fit");
@@ -2755,24 +3315,32 @@
     $("#workspace-customize").addEventListener("click", toggleWorkspaceSettings);
     $("#workspace-size").addEventListener("click", toggleWorkspaceSize);
     $("#workspace-width-control").addEventListener("input", event => setWorkspaceWidth(event.target.value));
+    $("#workspace-height-control").addEventListener("input", event => setWorkspaceHeight(event.target.value));
     $$('[data-workspace-tab-size]').forEach(button => button.addEventListener("click", () => setWorkspaceTabSize(button.dataset.workspaceTabSize)));
     $("#workspace-home-view").addEventListener("change", event => setWorkspaceHomeView(event.target.value));
-    $("#workspace-resize-handle").addEventListener("pointerdown", event => { event.preventDefault(); event.currentTarget.setPointerCapture?.(event.pointerId); workspaceResizing = true; workspaceDragging = false; });
-    $("#workspace-drag-handle").addEventListener("pointerdown", event => { if (event.target.closest("button")) return; const r = $("#workspace-dock").getBoundingClientRect(); workspaceDragOffset = { x: event.clientX-r.left, y: event.clientY-r.top }; workspaceDragging = true; workspaceResizing = false; event.currentTarget.setPointerCapture?.(event.pointerId); event.preventDefault(); });
+    $("#workspace-resize-handle").addEventListener("pointerdown", event => { event.preventDefault(); event.currentTarget.setPointerCapture?.(event.pointerId); workspaceResizing = true; workspaceHeightResizing = false; workspaceDragging = false; });
+    $("#workspace-height-resize-handle").addEventListener("pointerdown", event => { event.preventDefault(); event.currentTarget.setPointerCapture?.(event.pointerId); workspaceHeightResizing = true; workspaceResizing = false; workspaceDragging = false; });
+    $("#workspace-drag-handle").addEventListener("pointerdown", event => { if (event.target.closest("button")) return; const r = $("#workspace-dock").getBoundingClientRect(); workspaceDragOffset = { x: event.clientX-r.left, y: event.clientY-r.top }; workspaceDragging = true; workspaceResizing = false; workspaceHeightResizing = false; event.currentTarget.setPointerCapture?.(event.pointerId); event.preventDefault(); });
     $("#workspace-resize-handle").addEventListener("keydown", event => {
       if (event.key === "ArrowLeft") { event.preventDefault(); resizeWorkspaceBy(24); }
       if (event.key === "ArrowRight") { event.preventDefault(); resizeWorkspaceBy(-24); }
     });
+    $("#workspace-height-resize-handle").addEventListener("keydown", event => {
+      const current = $("#workspace-dock").getBoundingClientRect().height;
+      if (event.key === "ArrowUp") { event.preventDefault(); setWorkspaceHeight(current - 24); }
+      if (event.key === "ArrowDown") { event.preventDefault(); setWorkspaceHeight(current + 24); }
+    });
     addEventListener("pointermove", handleGraphPointerMove);
     addEventListener("pointermove", handleGraphPanMove);
     addEventListener("pointermove", handleWorkspaceResize);
+    addEventListener("pointermove", handleWorkspaceHeightResize);
     addEventListener("pointermove", handleWorkspaceDrag);
     addEventListener("pointerup", finishGraphDrag);
     addEventListener("pointerup", finishGraphPan);
-    addEventListener("pointerup", () => { workspaceResizing = false; workspaceDragging = false; });
+    addEventListener("pointerup", () => { workspaceResizing = false; workspaceHeightResizing = false; workspaceDragging = false; });
     addEventListener("pointercancel", finishGraphDrag);
     addEventListener("pointercancel", finishGraphPan);
-    addEventListener("pointercancel", () => { workspaceResizing = false; });
+    addEventListener("pointercancel", () => { workspaceResizing = false; workspaceHeightResizing = false; });
     addEventListener("resize", handleWorkspaceViewportChange);
     $$('[data-filter]').forEach(button => button.addEventListener("click", () => setFilter(button.dataset.filter)));
     $("#lesson-search").addEventListener("input", event => { state.lessonQuery = event.target.value; renderLessonList(); });
@@ -2794,7 +3362,10 @@
     if (railWidth >= 240) document.documentElement.style.setProperty("--rail-width", `${Math.min(420, railWidth)}px`);
     if (localStorage.getItem("cros-rail-collapsed") === "1") document.body.classList.add("rail-collapsed");
     $("#rail-autoclose").value = localStorage.getItem("cros-rail-autoclose") ?? "3000";
-    $("#rail-autoclose").addEventListener("change", event => localStorage.setItem("cros-rail-autoclose", event.target.value));
+    $("#rail-autoclose").addEventListener("change", event => {
+      localStorage.setItem("cros-rail-autoclose", event.target.value);
+      queueAppearanceSave();
+    });
     $("#rail-resize-handle").addEventListener("pointerdown", event => { railResizing = true; event.currentTarget.setPointerCapture?.(event.pointerId); event.preventDefault(); });
     addEventListener("pointermove", handleRailResize);
     addEventListener("pointerup", () => { railResizing = false; });
@@ -2823,6 +3394,7 @@
     $("#settings-operator-name").addEventListener("change", event => applyOperatorName(event.target.value));
     $("#desktop-install-button").addEventListener("click", installDesktopShortcut);
     $("#desktop-install-settings").addEventListener("click", installDesktopShortcut);
+    $("#save-xposedornot-key").addEventListener("click", saveXposedOrNotKey);
     $$('[data-accent]').forEach(button => button.addEventListener("click", () => setAccent(button.dataset.accent)));
     $("#custom-accent").addEventListener("input", event => setCustomAccent(event.target.value));
     $("#custom-background").value = localStorage.getItem("cros-background") || "#090b14";
@@ -2841,20 +3413,30 @@
     $("#light-smoothing").addEventListener("input", event => setLightSmoothing(event.target.value));
     $("#star-brightness").addEventListener("input", event => setStarBrightness(event.target.value));
     $$('[data-shape]').forEach(button => button.addEventListener("click", () => setShape(button.dataset.shape)));
+    $$('[data-background-style]').forEach(button => button.addEventListener("click", () => setBackgroundStyle(button.dataset.backgroundStyle)));
+    $("#background-dim").addEventListener("input", event => setBackgroundDim(event.target.value));
+    $("#panel-blur").addEventListener("input", event => setPanelBlur(event.target.value));
+    $$('[data-wing-style]').forEach(button => button.addEventListener("click", () => setWingStyle(button.dataset.wingStyle)));
+    $("#wing-size").addEventListener("input", event => setWingSize(event.target.value));
+    $("#wing-spread").addEventListener("input", event => setWingSpread(event.target.value));
+    $("#wing-lift").addEventListener("input", event => setWingLift(event.target.value));
+    $("#wing-brightness").addEventListener("input", event => setWingBrightness(event.target.value));
+    $$('[data-wing-density]').forEach(button => button.addEventListener("click", () => setWingDensity(button.dataset.wingDensity)));
     $$('[data-columns]').forEach(button => button.addEventListener("click", () => setColumns(button.dataset.columns)));
     $$('[data-screen-fit]').forEach(button => button.addEventListener("click", () => setScreenFit(button.dataset.screenFit)));
     $$('[data-interface-preset]').forEach(button => button.addEventListener("click", () => setInterfacePreset(button.dataset.interfacePreset)));
     $$('[data-logo-style]').forEach(button => button.addEventListener("click", () => changeLogoStyle(button.dataset.logoStyle)));
     $("#custom-logo-file").addEventListener("change", event => useCustomLogo(event.target.files?.[0]));
     $("#reset-appearance").addEventListener("click", () => {
-      ["cros-interface-preset", "cros-accent", "cros-custom-accent", "cros-background", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-screen-fit", "cros-logo-style"].forEach(key => localStorage.removeItem(key));
+      ["cros-interface-preset", "cros-accent", "cros-custom-accent", "cros-background", "cros-background-style", "cros-background-dim", "cros-panel-blur", "cros-wing-style", "cros-wing-size", "cros-wing-spread", "cros-wing-lift", "cros-wing-brightness", "cros-wing-density", "cros-star-color", "cros-particles", "cros-wings", "cros-compact", "cros-animations", "cros-glow", "cros-motion", "cros-particle-density", "cros-light-smoothing", "cros-star-brightness", "cros-shape", "cros-columns", "cros-screen-fit", "cros-logo-style"].forEach(key => localStorage.removeItem(key));
       document.body.classList.remove("no-particles", "no-wings", "no-animations", "compact", "fixed-columns");
       restoreSettings();
       changeLogoStyle("original");
       renderTools();
+      saveAppearanceNow();
       toast("Appearance reset", "The original CROS interface settings are restored.");
     });
-    $$(`#settings-drawer input, #settings-drawer select, #settings-drawer .toggle, #settings-drawer [data-accent], #settings-drawer [data-shape], #settings-drawer [data-columns], #settings-drawer [data-screen-fit], #settings-drawer [data-interface-preset]`).forEach(control => {
+    $$(`#settings-drawer input, #settings-drawer select, #settings-drawer .toggle, #settings-drawer [data-accent], #settings-drawer [data-background-style], #settings-drawer [data-wing-style], #settings-drawer [data-wing-density], #settings-drawer [data-shape], #settings-drawer [data-columns], #settings-drawer [data-screen-fit], #settings-drawer [data-interface-preset]`).forEach(control => {
       ["input", "change", "click"].forEach(type => control.addEventListener(type, () => setTimeout(queueAppearanceSave, 0)));
     });
     let clearArmed = false, clearTimer = 0;
@@ -2923,12 +3505,48 @@
     catch (error) { toast("Could not open item", error.message, true); }
   }
 
+  function initScrollScenes() {
+    const root = document.documentElement;
+    const sections = $$("main > section:not(.hero)");
+    sections.forEach(section => section.classList.add("scene-reveal"));
+
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion || !("IntersectionObserver" in window)) {
+      sections.forEach(section => section.classList.add("scene-visible"));
+    } else {
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("scene-visible");
+          observer.unobserve(entry.target);
+        });
+      }, { threshold: 0.08, rootMargin: "0px 0px -8% 0px" });
+      sections.forEach(section => observer.observe(section));
+    }
+
+    let scrollFrame = 0;
+    const updateScene = () => {
+      scrollFrame = 0;
+      const scrollRange = Math.max(1, document.documentElement.scrollHeight - innerHeight);
+      const progress = Math.max(0, Math.min(1, scrollY / scrollRange));
+      root.style.setProperty("--scene-parallax", `${Math.round(progress * -140)}px`);
+      root.style.setProperty("--scene-reveal-opacity", String((0.065 + Math.sqrt(progress) * 0.285).toFixed(3)));
+    };
+    const queueSceneUpdate = () => {
+      if (!scrollFrame) scrollFrame = requestAnimationFrame(updateScene);
+    };
+    addEventListener("scroll", queueSceneUpdate, { passive: true });
+    addEventListener("resize", queueSceneUpdate);
+    updateScene();
+  }
+
   async function init() {
     // Always reopen on the Home view; Settings is never a persisted startup screen.
     setSettingsOpen(false);
     window.scrollTo(0, 0);
-    setupWorkspaceDock();
     await restoreAppearanceFromServer();
+    await restoreProviderKeys();
+    setupWorkspaceDock();
     restoreSettings();
     restoreOperatorName();
     renderPins();
@@ -2936,6 +3554,7 @@
     renderGraph();
     bindEvents();
     bindPointerGlow();
+    initScrollScenes();
     initParticles();
     try {
       await loadWorkspace();

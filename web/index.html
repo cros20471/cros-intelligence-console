@@ -50,7 +50,7 @@
         <h1 id="hero-title">One console.<br><em>Every signal.</em></h1>
         <p id="hero-welcome-copy">Public-source intelligence, local analysis, and defensive Windows security in one focused workspace. Nothing is uploaded unless a tool clearly tells you first.</p>
         <div class="hero-meta">
-          <span><b id="tool-count-hero">92</b> TOOLS INDEXED</span>
+          <span><b id="tool-count-hero">93</b> TOOLS INDEXED</span>
           <span><b>600+</b> BLACKBIRD PUBLIC CHECKS</span>
           <span><b>127.0.0.1</b> LOCAL BIND</span>
           <span><b>READ-ONLY</b> BY DEFAULT</span>
@@ -86,7 +86,7 @@
           <button id="wing-tools">All Tools</button>
         </div>
         <span class="stage-label stage-left">OSINT / 01</span>
-        <span class="stage-label stage-right">DEFENSE / 50</span>
+        <span class="stage-label stage-right">DEFENSE / 51</span>
       </div>
 
       <div class="search-zone">
@@ -296,7 +296,7 @@
     <section class="learning-section" id="learning" aria-labelledby="learning-title">
       <div class="section-heading learning-heading">
         <div><span class="section-index">03</span><h2 id="learning-title">Learning center</h2><p>Click any lesson for a clear purpose, required tools, safe workflow, result guidance, and supporting sources.</p></div>
-        <div class="learning-progress" aria-label="Lesson progress"><span>PROGRESS</span><strong id="learning-progress-count">0 / 92</strong><i><b id="learning-progress-bar"></b></i></div>
+        <div class="learning-progress" aria-label="Lesson progress"><span>PROGRESS</span><strong id="learning-progress-count">0 / 93</strong><i><b id="learning-progress-bar"></b></i></div>
       </div>
 
       <div class="learning-nav" role="tablist" aria-label="Learning center sections">
@@ -317,7 +317,7 @@
           <div class="lesson-list" id="lesson-list" aria-label="Available lessons"></div>
         </aside>
         <article class="lesson-detail" id="lesson-detail" aria-live="polite">
-          <div class="lesson-empty"><span id="lesson-empty-count">92 STEP-BY-STEP LESSONS</span><h3>Choose a tool to learn it</h3><p>Every lesson explains when to use the tool, what you need, the safest workflow, and how to read the result.</p></div>
+          <div class="lesson-empty"><span id="lesson-empty-count">93 STEP-BY-STEP LESSONS</span><h3>Choose a tool to learn it</h3><p>Every lesson explains when to use the tool, what you need, the safest workflow, and how to read the result.</p></div>
         </article>
       </div>
 
@@ -338,12 +338,14 @@
 
   <aside class="workspace-dock" id="workspace-dock" aria-label="Investigation workspace" aria-hidden="true" hidden>
     <button class="workspace-resize-handle" id="workspace-resize-handle" aria-label="Resize investigation workspace" aria-description="Drag horizontally or use the left and right arrow keys"></button>
+    <button class="workspace-height-resize-handle" id="workspace-height-resize-handle" aria-label="Resize workspace height" aria-description="Drag vertically or use the up and down arrow keys"></button>
     <header class="workspace-dock-head" id="workspace-drag-handle" title="Drag to move the investigation workspace">
       <div><span>IN-APP WORKSPACE</span><h2>Investigate</h2></div>
       <div class="workspace-dock-actions"><button id="workspace-customize" aria-expanded="false" aria-controls="workspace-settings">TUNE</button><button id="workspace-size" aria-label="Maximize workspace">□</button><button id="workspace-close" aria-label="Close workspace">×</button></div>
     </header>
     <section class="workspace-settings" id="workspace-settings" hidden aria-label="Customize workspace tabs">
       <label><span>PANEL WIDTH</span><input id="workspace-width-control" type="range" min="300" max="900" step="10" value="570"><b id="workspace-width-value">570px</b></label>
+      <label><span>PANEL HEIGHT</span><input id="workspace-height-control" type="range" min="360" max="1200" step="10" value="620"><b id="workspace-height-value">620px</b></label>
       <div class="workspace-setting-row"><span>TAB SIZE</span><div id="workspace-tab-sizes"><button type="button" data-workspace-tab-size="compact">SMALL</button><button type="button" data-workspace-tab-size="normal">NORMAL</button><button type="button" data-workspace-tab-size="large">LARGE</button></div></div>
       <label><span>OPEN TO</span><select id="workspace-home-view"><option value="research">Research</option><option value="map">Map</option><option value="session">Tool session</option></select></label>
     </section>
@@ -402,12 +404,50 @@
   <aside class="settings-drawer" id="settings-drawer" aria-label="Appearance settings" aria-hidden="true" hidden>
     <div class="settings-close-bar"><button class="icon-button" id="settings-close" aria-label="Close settings">×</button></div>
     <div class="drawer-head"><div><span>INTERFACE</span><h2>Appearance</h2></div></div>
-    <nav class="settings-jump-nav" aria-label="Appearance sections"><button type="button" data-settings-jump="settings-logo">LOGO</button><button type="button" data-settings-jump="settings-themes">THEMES</button><button type="button" data-settings-jump="settings-colors">COLORS</button><button type="button" data-settings-jump="settings-layout">LAYOUT</button><button type="button" data-settings-jump="settings-motion">MOTION</button><button type="button" data-settings-jump="settings-data">DATA</button></nav>
+    <nav class="settings-jump-nav" aria-label="Appearance sections"><button type="button" data-settings-jump="settings-logo">LOGO</button><button type="button" data-settings-jump="settings-themes">THEMES</button><button type="button" data-settings-jump="settings-visuals">VISUALS</button><button type="button" data-settings-jump="settings-layout">LAYOUT</button><button type="button" data-settings-jump="settings-motion">MOTION</button><button type="button" data-settings-jump="settings-data">DATA</button></nav>
     <section class="drawer-section interface-presets"><div class="settings-section-title"><span>INTERFACE PRESET</span><small>Choose a complete visual style without changing any tools or saved work.</small></div><div class="preset-options" role="group" aria-label="Interface preset"><button data-interface-preset="flux" class="active"><b>FLUX</b><small>Red intelligence portal</small></button><button data-interface-preset="cros"><b>CROS</b><small>Original console · customizable colors</small></button><button data-interface-preset="arctic"><b>ARCTIC</b><small>Clean ice-blue command</small></button><button data-interface-preset="matrix"><b>MATRIX</b><small>Green terminal operations</small></button><button data-interface-preset="amber"><b>AMBER</b><small>Warm analyst workstation</small></button><button data-interface-preset="mono"><b>MONO</b><small>Minimal graphite interface</small></button><button data-interface-preset="ocean"><b>OCEAN</b><small>Deep-blue investigation deck</small></button><button data-interface-preset="rose"><b>ROSE</b><small>Soft magenta intelligence</small></button><button data-interface-preset="cyber"><b>CYBER</b><small>Electric neon operations</small></button><button data-interface-preset="midnight"><b>MIDNIGHT</b><small>Deep indigo command room</small></button><button data-interface-preset="minimal"><b>MINIMAL</b><small>Flat surfaces, no glow</small></button><button data-interface-preset="slate"><b>SLATE</b><small>Quiet blue-gray workspace</small></button><button data-interface-preset="paper"><b>PAPER</b><small>Soft warm analyst desk</small></button><button data-interface-preset="graphite"><b>GRAPHITE</b><small>Neutral dark, low contrast</small></button><button data-interface-preset="linen"><b>LINEN</b><small>Warm light, simple panels</small></button><button data-interface-preset="vs-dark"><b>VS DARK</b><small>Developer dark workspace</small></button><button data-interface-preset="vs-light"><b>VS LIGHT</b><small>Clean editor light</small></button><button data-interface-preset="vs-contrast"><b>VS CONTRAST</b><small>High-contrast editor</small></button></div></section>
     <section class="drawer-section logo-settings"><div class="settings-section-title"><span>APP LOGO</span><small>Choose a clear taskbar icon. Every option gets a fresh Windows icon identity.</small></div><div class="logo-options" role="radiogroup" aria-label="Cros app logo"><button type="button" data-logo-style="original" role="radio"><span class="logo-preview original"><img src="/original-logo.png" alt=""></span><b>ORIGINAL</b><small>Current Cros mark</small></button><button type="button" data-logo-style="signal" role="radio"><span class="logo-preview signal">C<i></i></span><b>SIGNAL</b><small>Bright violet</small></button><button type="button" data-logo-style="scope" role="radio"><span class="logo-preview scope">C</span><b>SCOPE</b><small>Cyan targeting ring</small></button><button type="button" data-logo-style="shield" role="radio"><span class="logo-preview shield">C</span><b>SHIELD</b><small>Blue defense mark</small></button><button type="button" data-logo-style="mono" role="radio"><span class="logo-preview mono">C</span><b>MONO</b><small>Clean and readable</small></button></div><label class="custom-logo-button">UPLOAD A CUSTOM LOGO<input id="custom-logo-file" type="file" accept="image/png,image/jpeg,image/webp"></label><small class="logo-note" id="logo-note">Square PNG, JPG, or WebP works best.</small></section>
     <section class="drawer-section color-settings"><div class="settings-section-title"><span>CROS COLOR SYSTEM</span><small>Fine-tune the original Cros preset with your own palette.</small></div><label>INTERFACE COLOR</label><div class="swatches"><button data-accent="violet" class="active" aria-label="Violet"></button><button data-accent="cyan" aria-label="Cyan"></button><button data-accent="red" aria-label="Red"></button><button data-accent="green" aria-label="Green"></button><button data-accent="amber" aria-label="Amber"></button><button data-accent="ice" aria-label="Ice"></button></div><label class="custom-color">CUSTOM ACCENT <input id="custom-accent" type="color" value="#8566ff" aria-label="Choose custom interface color"></label><label class="color-field" for="custom-background"><span>BACKGROUND</span><input id="custom-background" type="color" value="#090b14" aria-label="Choose background color"></label><label class="color-field" for="custom-stars"><span>STARS &amp; POINTER LIGHT</span><input id="custom-stars" type="color" value="#9ca9ff" aria-label="Choose star color"></label></section>
+    <section class="drawer-section background-settings">
+      <div class="settings-section-title"><span>BACKGROUND SCENE</span><small>Layer a distinct atmosphere behind the interface while keeping every panel readable.</small></div>
+      <div class="background-options" role="radiogroup" aria-label="Background scene">
+        <button type="button" data-background-style="basic" role="radio"><i></i><b>BASIC</b><small>Original preset background</small></button>
+        <button type="button" data-background-style="nebula" role="radio"><i></i><b>NEBULA</b><small>Deep violet clouds</small></button>
+        <button type="button" data-background-style="grid" role="radio"><i></i><b>TACTICAL GRID</b><small>Structured operations map</small></button>
+        <button type="button" data-background-style="aurora" role="radio"><i></i><b>AURORA</b><small>Flowing cyan light</small></button>
+        <button type="button" data-background-style="eclipse" role="radio"><i></i><b>ECLIPSE</b><small>Dark red horizon</small></button>
+        <button type="button" data-background-style="void" role="radio"><i></i><b>VOID</b><small>Minimal deep black</small></button>
+        <button type="button" data-background-style="blueprint" role="radio"><i></i><b>BLUEPRINT</b><small>Technical blue field</small></button>
+        <button type="button" data-background-style="storm" role="radio"><i></i><b>ION STORM</b><small>Electric cloud bands</small></button>
+        <button type="button" data-background-style="scanline" role="radio"><i></i><b>SCANLINE</b><small>Retro signal monitor</small></button>
+        <button type="button" data-background-style="solar" role="radio"><i></i><b>SOLAR FLARE</b><small>Amber orbital glow</small></button>
+        <button type="button" data-background-style="synthwave" role="radio"><i></i><b>SYNTHWAVE</b><small>Neon horizon grid</small></button>
+        <button type="button" data-background-style="emerald" role="radio"><i></i><b>EMERALD</b><small>Green intelligence field</small></button>
+        <button type="button" data-background-style="frost" role="radio"><i></i><b>FROST</b><small>Clean pale-blue haze</small></button>
+        <button type="button" data-background-style="starfield" role="radio"><i></i><b>STARFIELD</b><small>Quiet deep-space lights</small></button>
+        <button type="button" data-background-style="radar" role="radio"><i></i><b>RADAR</b><small>Emerald sweep display</small></button>
+        <button type="button" data-background-style="carbon" role="radio"><i></i><b>CARBON</b><small>Subtle graphite weave</small></button>
+        <button type="button" data-background-style="sunset" role="radio"><i></i><b>AFTERGLOW</b><small>Warm violet horizon</small></button>
+      </div>
+      <div class="scene-controls">
+        <label><span>BACKGROUND DIMMER</span><output id="background-dim-output">0%</output><input id="background-dim" type="range" min="0" max="70" value="0"></label>
+        <label><span>PANEL GLASS BLUR</span><output id="panel-blur-output">20px</output><input id="panel-blur" type="range" min="0" max="32" value="20"></label>
+      </div>
+    </section>
+    <section class="drawer-section wing-settings">
+      <div class="settings-section-title"><span>WING ARCHITECTURE</span><small>Change the centerpiece silhouette, feather construction, and energy treatment.</small></div>
+      <div class="wing-style-options" role="radiogroup" aria-label="Wing architecture"><button type="button" data-wing-style="seraph" role="radio"><span class="wing-mini seraph"><i></i><i></i><i></i></span><b>SERAPH</b><small>Layered luminous feathers</small></button><button type="button" data-wing-style="razor" role="radio"><span class="wing-mini razor"><i></i><i></i><i></i></span><b>RAZOR</b><small>Sharp tactical blades</small></button><button type="button" data-wing-style="hologram" role="radio"><span class="wing-mini hologram"><i></i><i></i><i></i></span><b>HOLOGRAM</b><small>Transparent signal arrays</small></button><button type="button" data-wing-style="phoenix" role="radio"><span class="wing-mini phoenix"><i></i><i></i><i></i></span><b>PHOENIX</b><small>Wide energetic flare</small></button><button type="button" data-wing-style="stealth" role="radio"><span class="wing-mini stealth"><i></i><i></i><i></i></span><b>STEALTH</b><small>Compact armored fins</small></button><button type="button" data-wing-style="arc" role="radio"><span class="wing-mini arc"><i></i><i></i><i></i></span><b>ARC</b><small>Curved energy vanes</small></button><button type="button" data-wing-style="prism" role="radio"><span class="wing-mini prism"><i></i><i></i><i></i></span><b>PRISM</b><small>Bright crystalline plates</small></button><button type="button" data-wing-style="sentinel" role="radio"><span class="wing-mini sentinel"><i></i><i></i><i></i></span><b>SENTINEL</b><small>Heavy defense fins</small></button></div>
+      <div class="wing-controls">
+        <label><span>WING SIZE</span><output id="wing-size-output">100%</output><input id="wing-size" type="range" min="70" max="135" value="100"></label>
+        <label><span>WING SPREAD</span><output id="wing-spread-output">100%</output><input id="wing-spread" type="range" min="65" max="155" value="100"></label>
+        <label><span>WING HEIGHT</span><output id="wing-lift-output">0px</output><input id="wing-lift" type="range" min="-40" max="40" value="0"></label>
+        <label><span>WING BRIGHTNESS</span><output id="wing-brightness-output">85%</output><input id="wing-brightness" type="range" min="35" max="120" value="85"></label>
+      </div>
+      <div class="wing-density-options" role="radiogroup" aria-label="Wing feather density"><button type="button" data-wing-density="sparse" role="radio">SPARSE</button><button type="button" data-wing-density="normal" role="radio">BALANCED</button><button type="button" data-wing-density="dense" role="radio">DENSE</button></div>
+    </section>
     <div class="drawer-section"><label for="settings-operator-name">OPERATOR NAME</label><small>Stored locally and used in your welcome label.</small><input id="settings-operator-name" type="text" maxlength="40" placeholder="Your name" autocomplete="name"></div>
     <div class="drawer-section provider-settings"><label>NAME SEARCH PROVIDER</label><small>Blackbird is the built-in local username engine. Results come from its public-source checks and no API key is required.</small><div class="provider-plan"><div><b>BLACKBIRD · LOCAL</b><small>600+ public site checks with verified responses inside Cros.</small></div><span>ACTIVE</span></div><div class="provider-plan"><div><b>HIBP · PASSWORD CHECK</b><small>The free password check uses k-anonymity and never requires an API key.</small></div><span>FREE</span></div></div>
+    <div class="drawer-section provider-key-settings"><label for="xposedornot-api-key">XPOSEDORNOT API KEY</label><small>Email breach checks are free without a key. Add an xonAPI+ or verified-domain key here for authenticated access and provider-specific limits.</small><input id="xposedornot-api-key" type="password" maxlength="512" placeholder="Paste key locally" autocomplete="off"><div class="provider-key-actions"><button id="save-xposedornot-key" type="button">SAVE KEY LOCALLY</button><span id="xposedornot-key-status">NOT CONFIGURED</span></div><a href="https://xposedornot.com/api_doc" target="_blank" rel="noreferrer">XPOSEDORNOT API DOCUMENTATION ↗</a></div>
     <div class="drawer-section setting-row"><div><label>PARTICLE FIELD</label><small>Animated local signal map</small></div><button class="toggle active" id="particle-toggle" aria-pressed="true"><i></i></button></div>
     <div class="drawer-section setting-row"><div><label>ANIMATED WINGS</label><small>Reactive centerpiece wings</small></div><button class="toggle active" id="wing-toggle" aria-pressed="true"><i></i></button></div>
     <div class="drawer-section setting-row"><div><label>COMPACT CARDS</label><small>Fit more tools on screen</small></div><button class="toggle" id="compact-toggle" aria-pressed="false"><i></i></button></div>

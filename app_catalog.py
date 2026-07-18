@@ -103,6 +103,7 @@ CATALOG += _rows("security", "File Defense", [
     ("14", "Secret Scanner", "Find possible exposed keys and tokens without printing values.", "local"),
     ("15", "Office Macro Check", "Inspect Office containers for macros and embedded objects.", "local"),
     ("16", "Downloads Risk Scan", "Review active, macro-capable, and double-extension downloads.", "local"),
+    ("51", "Secure File Shredder", "Overwrite and permanently remove one confirmed local file.", "confirm"),
 ])
 
 CATALOG += _rows("security", "Windows and Network", [
