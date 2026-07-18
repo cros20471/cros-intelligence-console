@@ -1058,17 +1058,20 @@
       const mode = panel.querySelector("#native-breach-mode");
       const targetInput = panel.querySelector("#native-breach-target");
       const targetLabel = panel.querySelector("#native-breach-target-label");
+      const freeOption = mode.querySelector('option[value="email"]'); if (freeOption) freeOption.textContent = "Email breach metadata · XposedOrNot Free";
+      const hibpOption = document.createElement("option"); hibpOption.value = "email-hibp"; hibpOption.textContent = "Email breach metadata · HIBP API (paid)"; mode.append(hibpOption);
+      const infoLinks = document.createElement("div"); infoLinks.className = "native-inline-links"; infoLinks.innerHTML = '<a href="https://xon-web-test.xposedornot.com/api_doc" target="_blank" rel="noreferrer">FREE API INFO</a><a href="https://haveibeenpwned.com/API/Key" target="_blank" rel="noreferrer">HIBP API KEY · PAID</a>'; panel.querySelector("#native-breach-form").append(infoLinks);
       mode.addEventListener("change", () => { const username = mode.value === "username"; targetInput.type = username ? "text" : "email"; targetInput.placeholder = username ? "public handle" : "you@example.com"; targetLabel.textContent = username ? "PUBLIC USERNAME" : "EMAIL ADDRESS"; });
       panel.querySelector("#native-breach-form").addEventListener("submit", async event => {
         event.preventDefault();
         const target = targetInput.value.trim();
         const root = panel.querySelector("#native-generated-results"); root.replaceChildren();
-        const status = document.createElement("div"); status.className = "blackbird-live-note"; status.textContent = mode.value === "username" ? "Checking free public username sources…" : "Checking Have I Been Pwned metadata…"; root.append(status);
+        const status = document.createElement("div"); status.className = "blackbird-live-note"; status.textContent = mode.value === "username" ? "Checking free public username sources…" : mode.value === "email-hibp" ? "Checking Have I Been Pwned metadata…" : "Checking free XposedOrNot breach metadata…"; root.append(status);
         try {
           if (mode.value === "username") {
             const response = await api("/api/free-public-search", { method: "POST", body: JSON.stringify({ username: target }) });
             root.replaceChildren(); renderPublicProviderResults(root, "FREE PUBLIC USERNAME RESULTS", response.results, "Public profile matches are leads and are not proof that accounts belong to the same person."); updateSessionProgress({ done: true, returncode: 0, stage: "Username check complete" });
-          } else await runBreachCheck(target, root);
+          } else await runBreachCheck(target, root, true, mode.value === "email-hibp" ? "hibp" : "xposedornot");
         }
         catch (error) { root.replaceChildren(); const warning = document.createElement("p"); warning.textContent = error.message; root.append(warning); updateSessionProgress({ done: true, returncode: 1, stage: "Breach check unavailable" }); }
       });
@@ -1275,10 +1278,10 @@
     root.append(block);
   }
 
-  async function runBreachCheck(target, root, progress = true) {
-    if (progress) updateSessionProgress({ done: false, stage: "Checking HIBP breach metadata" });
+  async function runBreachCheck(target, root, progress = true, provider = "xposedornot") {
+    if (progress) updateSessionProgress({ done: false, stage: provider === "hibp" ? "Checking HIBP breach metadata" : "Checking free XposedOrNot breach metadata" });
     const key = localStorage.getItem("cros-hibp-key") || "";
-    const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, api_key: key }) });
+    const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, api_key: key, provider }) });
     renderBreachMetadata(root, response, target);
     if (progress) updateSessionProgress({ done: true, returncode: 0, stage: "Breach metadata check complete" });
     return response;

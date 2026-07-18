@@ -449,31 +449,82 @@ def _save_breach_cache(cache: dict[str, object]) -> None:
         os.replace(temporary, BREACH_CACHE_FILE)
 
 
-def breach_check(target: str, api_key: str = "") -> dict[str, object]:
-    """Return HIBP breach metadata only; never return credentials or raw breach records."""
+def _wait_for_breach_request() -> None:
     global BREACH_LAST_REQUEST
-    target = _short_text(target, 320)
-    kind = _breach_target_kind(target)
-    if kind == "invalid":
-        raise ValueError("Enter an email address, username, or domain.")
-    if kind != "email":
-        return {"target_type": kind, "supported": False, "results": [],
-                "message": "HIBP account exposure checks require an email address. Username and domain checks need a verified provider endpoint."}
-    cache_key = hashlib.sha256(target.lower().encode("utf-8")).hexdigest()
-    now = time.time()
-    cache = _load_breach_cache()
-    cached = cache.get(cache_key)
-    if isinstance(cached, dict) and now - float(cached.get("saved_at", 0)) < 86400:
-        _breach_log("cache-hit")
-        return {"target_type": "email", "cached": True, "results": cached.get("results", [])}
-    api_key = api_key.strip() or read_provider_keys().get("hibp", "")
-    if not re.fullmatch(r"[0-9a-fA-F]{32}", api_key):
-        raise ValueError("Add your HIBP API key in Settings before running a breach check.")
     with BREACH_RATE_LOCK:
         delay = 1.5 - (time.monotonic() - BREACH_LAST_REQUEST)
         if delay > 0:
             time.sleep(delay)
         BREACH_LAST_REQUEST = time.monotonic()
+
+
+def _free_breach_check(target: str) -> dict[str, object]:
+    cache_key = hashlib.sha256(("xposedornot:" + target.lower()).encode("utf-8")).hexdigest()
+    now = time.time()
+    cache = _load_breach_cache()
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict) and now - float(cached.get("saved_at", 0)) < 86400:
+        _breach_log("cache-hit provider=xposedornot")
+        return {"provider": "XposedOrNot", "target_type": "email", "cached": True, "results": cached.get("results", [])}
+    _wait_for_breach_request()
+    request = urllib.request.Request(
+        "https://api.xposedornot.com/v1/breach-analytics?email=" + urllib.parse.quote(target, safe=""),
+        headers={"user-agent": "Cros-Intelligence-Center/1.0", "accept": "application/json"},
+    )
+    _breach_log("request-start provider=xposedornot")
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        details = (((payload or {}).get("ExposedBreaches") or {}).get("breaches_details") or []) if isinstance(payload, dict) else []
+        results = []
+        seen: set[str] = set()
+        for item in details if isinstance(details, list) else []:
+            if not isinstance(item, dict):
+                continue
+            name = _short_text(item.get("breach"), 120)
+            if not name or name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            categories = [part.strip() for part in re.split(r"[;,]", _short_text(item.get("xposed_data"), 500)) if part.strip()]
+            results.append({"source": "XposedOrNot", "service": name, "domain": _short_text(item.get("domain"), 160), "breach_date": _short_text(item.get("xposed_date") or item.get("breached_date"), 32), "data_types": categories[:30], "verified": str(item.get("verified", "")).lower() in {"yes", "true"}, "details_url": _short_text(item.get("referenceURL"), 500)})
+        _save_breach_cache({**cache, cache_key: {"saved_at": now, "results": results}})
+        _breach_log(f"request-complete provider=xposedornot status=200 results={len(results)}")
+        return {"provider": "XposedOrNot", "target_type": "email", "cached": False, "results": results}
+    except urllib.error.HTTPError as exc:
+        _breach_log(f"request-error provider=xposedornot status={exc.code}")
+        if exc.code in {404, 429}:
+            if exc.code == 404:
+                _save_breach_cache({**cache, cache_key: {"saved_at": now, "results": []}})
+                return {"provider": "XposedOrNot", "target_type": "email", "cached": False, "results": []}
+            raise OSError("XposedOrNot rate limit reached. Try again later.") from exc
+        raise OSError(f"XposedOrNot returned HTTP {exc.code}.") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        _breach_log(f"request-error provider=xposedornot type={type(exc).__name__}")
+        raise OSError(f"Could not reach XposedOrNot: {exc}") from exc
+
+
+def breach_check(target: str, api_key: str = "", provider: str = "xposedornot") -> dict[str, object]:
+    """Return breach metadata only; never return credentials or raw breach records."""
+    target = _short_text(target, 320)
+    kind = _breach_target_kind(target)
+    if kind == "invalid":
+        raise ValueError("Enter an email address, username, or domain.")
+    if kind != "email":
+        return {"provider": provider, "target_type": kind, "supported": False, "results": [],
+                "message": "Breach exposure checks require an email address. Use the username mode for public profile checks."}
+    if provider == "xposedornot":
+        return _free_breach_check(target)
+    cache_key = hashlib.sha256(("hibp:" + target.lower()).encode("utf-8")).hexdigest()
+    now = time.time()
+    cache = _load_breach_cache()
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict) and now - float(cached.get("saved_at", 0)) < 86400:
+        _breach_log("cache-hit provider=hibp")
+        return {"provider": "Have I Been Pwned", "target_type": "email", "cached": True, "results": cached.get("results", [])}
+    api_key = api_key.strip() or read_provider_keys().get("hibp", "")
+    if not re.fullmatch(r"[0-9a-fA-F]{32}", api_key):
+        raise ValueError("Add your HIBP API key in Settings before running the paid HIBP API check, or choose XposedOrNot Free.")
+    _wait_for_breach_request()
     request = urllib.request.Request(
         "https://haveibeenpwned.com/api/v3/breachedaccount/" + urllib.parse.quote(target, safe=""),
         headers={"hibp-api-key": api_key, "user-agent": "Cros-Intelligence-Center/1.0", "accept": "application/json"},
@@ -1851,7 +1902,7 @@ class Handler(BaseHTTPRequestHandler):
         if route in {"/api/hibp-check", "/api/breach-check"}:
             target = str(body.get("email", body.get("target", ""))).strip()
             try:
-                result = breach_check(target, str(body.get("api_key", "")))
+                result = breach_check(target, str(body.get("api_key", "")), str(body.get("provider", "xposedornot")))
                 result["found"] = bool(result.get("results"))
                 result["breaches"] = result.get("results", [])
                 self.json_response(result)
