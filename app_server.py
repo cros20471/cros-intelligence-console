@@ -486,7 +486,7 @@ def _free_breach_check(target: str) -> dict[str, object]:
                 continue
             seen.add(name.lower())
             categories = [part.strip() for part in re.split(r"[;,]", _short_text(item.get("xposed_data"), 500)) if part.strip()]
-            results.append({"source": "XposedOrNot", "service": name, "domain": _short_text(item.get("domain"), 160), "breach_date": _short_text(item.get("xposed_date") or item.get("breached_date"), 32), "data_types": categories[:30], "verified": str(item.get("verified", "")).lower() in {"yes", "true"}, "details_url": _short_text(item.get("referenceURL"), 500)})
+            results.append({"source": "XposedOrNot", "service": name, "domain": _short_text(item.get("domain"), 160), "breach_date": _short_text(item.get("xposed_date") or item.get("breached_date"), 32), "data_types": categories[:30], "pwn_count": int(item.get("xposed_records") or 0), "verified": str(item.get("verified", "")).lower() in {"yes", "true"}, "details_url": _short_text(item.get("referenceURL"), 500)})
         _save_breach_cache({**cache, cache_key: {"saved_at": now, "results": results}})
         _breach_log(f"request-complete provider=xposedornot status=200 results={len(results)}")
         return {"provider": "XposedOrNot", "target_type": "email", "cached": False, "results": results}
@@ -567,6 +567,60 @@ def breach_check(target: str, api_key: str = "", provider: str = "xposedornot") 
     except (OSError, json.JSONDecodeError) as exc:
         _breach_log(f"request-error type={type(exc).__name__}")
         raise OSError(f"Could not reach HIBP: {exc}") from exc
+
+
+def hibp_breach_details(name: str, api_key: str = "") -> dict[str, object]:
+    """Fetch one HIBP breach's public metadata; never expose records or credentials."""
+    name = _short_text(name, 120)
+    if not name or not re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", name):
+        raise ValueError("Invalid HIBP breach name.")
+    _wait_for_breach_request()
+    request = urllib.request.Request(
+        "https://haveibeenpwned.com/api/v3/breach/" + urllib.parse.quote(name, safe=""),
+        headers={"user-agent": "Cros-Intelligence-Center/1.0", "accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            item = json.loads(response.read().decode("utf-8"))
+        if not isinstance(item, dict):
+            raise OSError("HIBP returned an unexpected breach detail response.")
+        allowed = {"Name", "Title", "Domain", "BreachDate", "AddedDate", "ModifiedDate", "PwnCount", "Description", "DataClasses", "LogoPath", "IsVerified", "IsFabricated", "IsSensitive", "IsRetired", "IsSpamList", "IsMalware", "IsStealerLog", "IsSubscriptionFree"}
+        return {key: item.get(key) for key in allowed if key in item}
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}: raise ValueError("HIBP rejected the API key or request.") from exc
+        if exc.code == 429: raise OSError("HIBP rate limit reached. Try again later.") from exc
+        raise OSError(f"HIBP returned HTTP {exc.code}.") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise OSError(f"Could not load HIBP breach details: {exc}") from exc
+
+
+def hibp_password_check(prefix: str, suffix: str) -> dict[str, object]:
+    """Use HIBP's free k-anonymous password API; receive only a hash suffix count."""
+    prefix = prefix.strip().upper()
+    suffix = suffix.strip().upper()
+    if not re.fullmatch(r"[0-9A-F]{5}", prefix) or not re.fullmatch(r"[0-9A-F]{35}", suffix):
+        raise ValueError("Invalid password hash format.")
+    _wait_for_breach_request()
+    request = urllib.request.Request(
+        "https://api.pwnedpasswords.com/range/" + prefix,
+        headers={"user-agent": "Cros-Intelligence-Center/1.0", "add-padding": "true"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            matches = response.read().decode("ascii", errors="ignore").splitlines()
+        count = 0
+        for line in matches:
+            parts = line.split(":", 1)
+            if len(parts) == 2 and parts[0].strip().upper() == suffix:
+                try: count = int(parts[1].strip())
+                except ValueError: count = 0
+                break
+        return {"found": count > 0, "count": count, "privacy": "Only a 5-character hash prefix was sent to HIBP."}
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429: raise OSError("HIBP password service rate limit reached. Try again later.") from exc
+        raise OSError(f"HIBP password service returned HTTP {exc.code}.") from exc
+    except OSError as exc:
+        raise OSError(f"Could not reach HIBP password service: {exc}") from exc
 
 
 def console_python() -> str:
@@ -1910,6 +1964,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response({"error": str(exc)}, 400)
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 502)
+            return
+        if route == "/api/hibp-breach-details":
+            try:
+                self.json_response(hibp_breach_details(str(body.get("name", "")), str(body.get("api_key", ""))))
+            except ValueError as exc: self.json_response({"error": str(exc)}, 400)
+            except OSError as exc: self.json_response({"error": str(exc)}, 502)
+            return
+        if route == "/api/hibp-password-check":
+            try:
+                self.json_response(hibp_password_check(str(body.get("prefix", "")), str(body.get("suffix", ""))))
+            except ValueError as exc: self.json_response({"error": str(exc)}, 400)
+            except OSError as exc: self.json_response({"error": str(exc)}, 502)
             return
         if route == "/api/osintdog-search":
             username = str(body.get("username", "")).strip()
