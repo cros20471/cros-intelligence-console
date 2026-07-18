@@ -468,7 +468,7 @@ def _free_breach_check(target: str) -> dict[str, object]:
         return {"provider": "XposedOrNot", "target_type": "email", "cached": True, "results": cached.get("results", [])}
     _wait_for_breach_request()
     request = urllib.request.Request(
-        "https://api.xposedornot.com/v1/breach-analytics?email=" + urllib.parse.quote(target, safe=""),
+        "https://api.xposedornot.com/v1/check-email/" + urllib.parse.quote(target, safe="") + "?details=true",
         headers={"user-agent": "Cros-Intelligence-Center/1.0", "accept": "application/json"},
     )
     _breach_log("request-start provider=xposedornot")
@@ -476,6 +476,15 @@ def _free_breach_check(target: str) -> dict[str, object]:
         with urllib.request.urlopen(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
         details = (((payload or {}).get("ExposedBreaches") or {}).get("breaches_details") or []) if isinstance(payload, dict) else []
+        if not details and isinstance(payload, dict) and payload.get("status") == "success":
+            _wait_for_breach_request()
+            analytics_request = urllib.request.Request(
+                "https://api.xposedornot.com/v1/breach-analytics?email=" + urllib.parse.quote(target, safe=""),
+                headers={"user-agent": "Cros-Intelligence-Center/1.0", "accept": "application/json"},
+            )
+            with urllib.request.urlopen(analytics_request, timeout=20) as response:
+                analytics = json.loads(response.read().decode("utf-8"))
+            details = (((analytics or {}).get("ExposedBreaches") or {}).get("breaches_details") or []) if isinstance(analytics, dict) else []
         results = []
         seen: set[str] = set()
         for item in details if isinstance(details, list) else []:
@@ -1963,10 +1972,11 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 500)
             return
-        if route in {"/api/hibp-check", "/api/breach-check"}:
+        if route == "/api/breach-check":
             target = str(body.get("email", body.get("target", ""))).strip()
             try:
-                result = mock_breach_check(target, str(body.get("mode", "email"))) if body.get("demo") else breach_check(target, str(body.get("api_key", "")), str(body.get("provider", "xposedornot")))
+                mode = str(body.get("mode", "email"))
+                result = mock_breach_check(target, mode) if body.get("demo") else (mock_breach_check(target, "username") if mode == "username" else breach_check(target, provider="xposedornot"))
                 result["found"] = bool(result.get("results"))
                 result["breaches"] = result.get("results", [])
                 self.json_response(result)

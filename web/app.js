@@ -1055,7 +1055,8 @@
     if (category === "osint" && String(id) === "4") {
       panel.innerHTML = `<div class="native-tool-head"><span>BREACH INTELLIGENCE · METADATA ONLY</span><h4>Breach exposure check</h4><p>Check an email with Have I Been Pwned, or check a username against free public profile sources. Cros never displays passwords or stolen records.</p></div><form class="native-workflow-form" id="native-breach-form"><label class="native-field"><span>CHECK TYPE</span><select id="native-breach-mode"><option value="email">Email breach metadata · HIBP API</option><option value="username">Username · free public profiles</option></select></label><label class="native-field"><span id="native-breach-target-label">EMAIL ADDRESS</span><input id="native-breach-target" type="email" maxlength="320" placeholder="you@example.com" required></label><div class="native-inline-links"><a href="https://haveibeenpwned.com/API/Key" target="_blank" rel="noreferrer">GET HIBP API KEY</a><a href="https://haveibeenpwned.com/" target="_blank" rel="noreferrer">FREE MANUAL HIBP CHECK</a></div><button class="primary-button" type="submit">RUN CHECK <span>→</span></button></form><div class="native-generated-results" id="native-generated-results"></div>`;
       panel.hidden = false;
-      panel.querySelector(".native-tool-head p").textContent = "UI prototype mode uses fictional sample records only. No real APIs are called and no real breach data is displayed.";
+      panel.querySelector(".native-tool-head p").textContent = "Email uses XposedOrNot free metadata, Password uses HIBP's free k-anonymous check, and Username uses clearly labeled local demo data. No paid HIBP email lookup is used.";
+      panel.querySelector('a[href*="/API/Key"]')?.remove();
       const mode = panel.querySelector("#native-breach-mode");
       const targetInput = panel.querySelector("#native-breach-target");
       const targetLabel = panel.querySelector("#native-breach-target-label");
@@ -1074,8 +1075,8 @@
             const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, mode: "username", demo: true }) });
             root.replaceChildren(); renderBreachDashboard(root, response, target); addDashboardChecklists(root, response.results || []); updateSessionProgress({ done: true, returncode: 0, stage: "Username demo check complete" });
           } else if (mode.value === "password") {
-            const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target: "demo-password", mode: "password", demo: true }) }); root.replaceChildren(); renderBreachDashboard(root, response, "demo password"); addDashboardChecklists(root, response.results || []); targetInput.value = ""; updateSessionProgress({ done: true, returncode: 0, stage: "Password demo check complete" });
-          } else await runBreachCheck(target, root, true, mode.value === "email-hibp" ? "hibp" : "xposedornot");
+            const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(target)); const hex = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase(); const response = await api("/api/hibp-password-check", { method: "POST", body: JSON.stringify({ prefix: hex.slice(0, 5), suffix: hex.slice(5) }) }); root.replaceChildren(); const result = document.createElement("div"); result.className = `password-result ${response.found ? "is-exposed" : "is-clear"}`; result.innerHTML = `<strong>${response.found ? "PASSWORD FOUND IN HIBP DATA" : "PASSWORD NOT FOUND IN HIBP DATA"}</strong><span>${response.found ? `${Number(response.count).toLocaleString()} observed matches` : "No match returned by the free k-anonymous check"}. The password itself was never sent.</span>`; root.append(result); appendExposureChecklist(root, response.found ? ["Password"] : [], false); targetInput.value = ""; updateSessionProgress({ done: true, returncode: 0, stage: "Password privacy check complete" });
+          } else await runBreachCheck(target, root, true, "xposedornot");
         }
         catch (error) { root.replaceChildren(); const warning = document.createElement("p"); warning.textContent = error.message; root.append(warning); updateSessionProgress({ done: true, returncode: 1, stage: "Breach check unavailable" }); }
       });
@@ -1349,8 +1350,7 @@
 
   async function runBreachCheck(target, root, progress = true, provider = "xposedornot") {
     if (progress) updateSessionProgress({ done: false, stage: provider === "hibp" ? "Checking HIBP breach metadata" : "Checking free XposedOrNot breach metadata" });
-    const key = localStorage.getItem("cros-hibp-key") || "";
-    const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, api_key: key, provider, mode: "email", demo: true }) });
+    const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, provider: "xposedornot" }) });
     renderBreachDashboard(root, response, target);
     addDashboardChecklists(root, Array.isArray(response.results || response.breaches) ? (response.results || response.breaches) : []);
     if (progress) updateSessionProgress({ done: true, returncode: 0, stage: "Breach metadata check complete" });
