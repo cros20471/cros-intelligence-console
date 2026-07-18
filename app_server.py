@@ -503,6 +503,16 @@ def _free_breach_check(target: str) -> dict[str, object]:
         raise OSError(f"Could not reach XposedOrNot: {exc}") from exc
 
 
+def mock_breach_check(target: str, mode: str = "email") -> dict[str, object]:
+    """Return fictional records for UI development only; never calls a network service."""
+    mode = mode if mode in {"email", "password", "username"} else "email"
+    records = [
+        {"service": "DemoForum 2019", "breach_date": "2019-06-14", "domain": "demo-forum.invalid", "pwn_count": 125000, "email": "demo.user@example.test", "password": "password123", "username": "demo_user", "ip": "203.0.113.42", "location": "Example City", "data_types": ["Email", "Password", "Username", "IP address", "Location"]},
+        {"service": "SampleShop 2021", "breach_date": "2021-11-02", "domain": "sample-shop.invalid", "pwn_count": 48200, "email": "training.account@example.test", "password": "demo-only-pass!", "username": "training_account", "ip": "198.51.100.7", "location": "Training Region", "data_types": ["Email", "Password", "Username", "IP address", "Location"]},
+    ]
+    return {"provider": "Cros Demo Breach API", "target_type": mode, "cached": False, "demo": True, "demo_notice": "Fictional training data only. No real APIs or breach records were queried.", "results": records}
+
+
 def breach_check(target: str, api_key: str = "", provider: str = "xposedornot") -> dict[str, object]:
     """Return breach metadata only; never return credentials or raw breach records."""
     target = _short_text(target, 320)
@@ -1956,7 +1966,7 @@ class Handler(BaseHTTPRequestHandler):
         if route in {"/api/hibp-check", "/api/breach-check"}:
             target = str(body.get("email", body.get("target", ""))).strip()
             try:
-                result = breach_check(target, str(body.get("api_key", "")), str(body.get("provider", "xposedornot")))
+                result = mock_breach_check(target, str(body.get("mode", "email"))) if body.get("demo") else breach_check(target, str(body.get("api_key", "")), str(body.get("provider", "xposedornot")))
                 result["found"] = bool(result.get("results"))
                 result["breaches"] = result.get("results", [])
                 self.json_response(result)

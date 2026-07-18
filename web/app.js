@@ -1055,6 +1055,7 @@
     if (category === "osint" && String(id) === "4") {
       panel.innerHTML = `<div class="native-tool-head"><span>BREACH INTELLIGENCE · METADATA ONLY</span><h4>Breach exposure check</h4><p>Check an email with Have I Been Pwned, or check a username against free public profile sources. Cros never displays passwords or stolen records.</p></div><form class="native-workflow-form" id="native-breach-form"><label class="native-field"><span>CHECK TYPE</span><select id="native-breach-mode"><option value="email">Email breach metadata · HIBP API</option><option value="username">Username · free public profiles</option></select></label><label class="native-field"><span id="native-breach-target-label">EMAIL ADDRESS</span><input id="native-breach-target" type="email" maxlength="320" placeholder="you@example.com" required></label><div class="native-inline-links"><a href="https://haveibeenpwned.com/API/Key" target="_blank" rel="noreferrer">GET HIBP API KEY</a><a href="https://haveibeenpwned.com/" target="_blank" rel="noreferrer">FREE MANUAL HIBP CHECK</a></div><button class="primary-button" type="submit">RUN CHECK <span>→</span></button></form><div class="native-generated-results" id="native-generated-results"></div>`;
       panel.hidden = false;
+      panel.querySelector(".native-tool-head p").textContent = "UI prototype mode uses fictional sample records only. No real APIs are called and no real breach data is displayed.";
       const mode = panel.querySelector("#native-breach-mode");
       const targetInput = panel.querySelector("#native-breach-target");
       const targetLabel = panel.querySelector("#native-breach-target-label");
@@ -1070,10 +1071,10 @@
         const status = document.createElement("div"); status.className = "blackbird-live-note"; status.textContent = mode.value === "username" ? "Checking free public username sources…" : mode.value === "email-hibp" ? "Checking Have I Been Pwned metadata…" : "Checking free XposedOrNot breach metadata…"; root.append(status);
         try {
           if (mode.value === "username") {
-            const response = await api("/api/free-public-search", { method: "POST", body: JSON.stringify({ username: target }) });
-            root.replaceChildren(); renderPublicProviderResults(root, "FREE PUBLIC USERNAME RESULTS", response.results, "Public profile matches are leads and are not proof that accounts belong to the same person."); updateSessionProgress({ done: true, returncode: 0, stage: "Username check complete" });
+            const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, mode: "username", demo: true }) });
+            root.replaceChildren(); renderBreachDashboard(root, response, target); addDashboardChecklists(root, response.results || []); updateSessionProgress({ done: true, returncode: 0, stage: "Username demo check complete" });
           } else if (mode.value === "password") {
-            const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(target)); const hex = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase(); const response = await api("/api/hibp-password-check", { method: "POST", body: JSON.stringify({ prefix: hex.slice(0, 5), suffix: hex.slice(5) }) }); root.replaceChildren(); const result = document.createElement("div"); result.className = `password-result ${response.found ? "is-exposed" : "is-clear"}`; result.innerHTML = `<strong>${response.found ? "PASSWORD FOUND IN BREACH DATA" : "PASSWORD NOT FOUND IN HIBP DATA"}</strong><span>${response.found ? `${Number(response.count).toLocaleString()} observed matches` : "No match returned by the free k-anonymous check"}. The password itself was never sent.</span>`; root.append(result); appendExposureChecklist(root, response.found ? ["Password"] : [], false); targetInput.value = ""; updateSessionProgress({ done: true, returncode: 0, stage: "Password privacy check complete" });
+            const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target: "demo-password", mode: "password", demo: true }) }); root.replaceChildren(); renderBreachDashboard(root, response, "demo password"); addDashboardChecklists(root, response.results || []); targetInput.value = ""; updateSessionProgress({ done: true, returncode: 0, stage: "Password demo check complete" });
           } else await runBreachCheck(target, root, true, mode.value === "email-hibp" ? "hibp" : "xposedornot");
         }
         catch (error) { root.replaceChildren(); const warning = document.createElement("p"); warning.textContent = error.message; root.append(warning); updateSessionProgress({ done: true, returncode: 1, stage: "Breach check unavailable" }); }
@@ -1315,6 +1316,7 @@
 
   function renderBreachDashboard(root, payload, target) {
     const dashboard = document.createElement("section"); dashboard.className = "breach-dashboard";
+    if (payload.demo) dashboard.dataset.demo = "true";
     const heading = document.createElement("div"); heading.className = "breach-dashboard-head"; const title = document.createElement("h4"); title.textContent = "BREACH AWARENESS DASHBOARD"; const note = document.createElement("p"); note.textContent = `${payload.cached ? "Cached for 24 hours · " : "Live provider result · "}Metadata only for ${target}. No credentials or stolen records are displayed.`; heading.append(title, note); dashboard.append(heading);
     if (payload.supported === false) { const unsupported = document.createElement("p"); unsupported.textContent = payload.message || "This input type is not supported."; dashboard.append(unsupported); root.append(dashboard); return; }
     const results = Array.isArray(payload.results || payload.breaches) ? (payload.results || payload.breaches) : [];
@@ -1327,9 +1329,20 @@
     results.forEach(item => { const card = document.createElement("article"); card.className = "breach-card"; const [risk, riskClass] = breachRisk(item); const head = document.createElement("div"); head.className = "breach-card-head"; const name = document.createElement("h5"); name.textContent = item.service || item.Name || "Unnamed breach"; const badge = document.createElement("b"); badge.className = `risk-badge ${riskClass}`; badge.textContent = risk; head.append(name, badge); card.append(head); const meta = document.createElement("div"); meta.className = "breach-card-meta"; [["DATE", item.breach_date || item.BreachDate || "Unavailable"], ["AFFECTED", Number(item.pwn_count || item.PwnCount || 0).toLocaleString()], ["DOMAIN", item.domain || item.Domain || "Unavailable"]].forEach(([label, value]) => { const row = document.createElement("span"); row.innerHTML = `<small>${label}</small><strong></strong>`; row.querySelector("strong").textContent = value; meta.append(row); }); card.append(meta); const fields = document.createElement("div"); fields.className = "breach-field-preview"; (item.data_types || item.DataClasses || ["Metadata unavailable"]).forEach(value => { const chip = document.createElement("span"); chip.textContent = `✓ ${value}`; fields.append(chip); }); card.append(fields); const button = document.createElement("button"); button.className = "breach-detail-button"; button.type = "button"; button.textContent = "LOAD FULL METADATA"; button.addEventListener("click", () => loadBreachDetails(card, item)); card.append(button); cards.append(card); }); dashboard.append(cards); root.append(dashboard);
   }
 
+  function appendDemoFields(parent, record) {
+    if (!record?.email && !record?.password && !record?.username) return;
+    const grid = document.createElement("div"); grid.className = "breach-demo-fields";
+    [["EMAIL · DEMO", record.email], ["PASSWORD · DEMO", record.password], ["USERNAME · DEMO", record.username], ["IP · DEMO", record.ip], ["LOCATION · DEMO", record.location]].forEach(([label, value]) => {
+      if (!value) return;
+      const item = document.createElement("div"); const key = document.createElement("small"); key.textContent = label; const valueEl = document.createElement("strong"); valueEl.textContent = value; item.append(key, valueEl); grid.append(item);
+    });
+    parent.append(grid);
+  }
+
   function addDashboardChecklists(root, results) {
     const cards = [...root.querySelectorAll(".breach-card")];
     cards.forEach((card, index) => {
+      appendDemoFields(card, results[index]);
       if (!card.querySelector(".exposure-checklist")) appendExposureChecklist(card, results[index]?.data_types || results[index]?.DataClasses || [], false);
     });
   }
@@ -1337,7 +1350,7 @@
   async function runBreachCheck(target, root, progress = true, provider = "xposedornot") {
     if (progress) updateSessionProgress({ done: false, stage: provider === "hibp" ? "Checking HIBP breach metadata" : "Checking free XposedOrNot breach metadata" });
     const key = localStorage.getItem("cros-hibp-key") || "";
-    const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, api_key: key, provider }) });
+    const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, api_key: key, provider, mode: "email", demo: true }) });
     renderBreachDashboard(root, response, target);
     addDashboardChecklists(root, Array.isArray(response.results || response.breaches) ? (response.results || response.breaches) : []);
     if (progress) updateSessionProgress({ done: true, returncode: 0, stage: "Breach metadata check complete" });
