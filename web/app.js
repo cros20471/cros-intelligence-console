@@ -1349,7 +1349,7 @@
   }
 
   function renderImportedBreachCsv(root, rows, fileName) {
-    const results = rows.map((item, index) => ({ service: item.source || `Imported record ${index + 1}`, breach_date: item.date || "Unavailable", domain: "Local CSV", pwn_count: 1, email: item.email || "Unavailable", password: item.password || "Unavailable", username: item.username || "", ip: item.ip || "", location: item.location || "", data_types: item.password ? ["Password"] : [], extra_fields: Object.fromEntries(Object.entries(item).filter(([key]) => !["email", "password", "source", "date", "username", "ip", "location"].includes(key))), imported: true }));
+    const results = rows.map((item, index) => ({ service: item.source || `Imported record ${index + 1}`, breach_date: item.date || "Unavailable", domain: "Local CSV", pwn_count: 1, email: item.email || "", password: item.password || "", username: item.username || "", ip: item.ip || "", location: item.location || "", data_types: item.password ? ["Password"] : [], extra_fields: Object.fromEntries(Object.entries(item).filter(([key]) => !["email", "password", "source", "date", "username", "ip", "location"].includes(key))), imported: true }));
     root.replaceChildren(); renderBreachDashboard(root, { provider: "Local CSV", cached: false, imported: true, results }, fileName); addDashboardChecklists(root, results);
   }
 
