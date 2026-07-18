@@ -45,6 +45,7 @@
     pins: loadStoredPins(),
     graph: { nodes: [], edges: [] },
     selectedNode: "",
+    selectedEdge: "",
     imageResult: null,
     workspaceView: "research",
     workspaceHomeView: "research",
@@ -566,6 +567,7 @@
     const dock = $("#workspace-dock");
     dock.hidden = false;
     dock.setAttribute("aria-hidden", "false");
+    document.body.classList.add("workspace-open");
     $("#workspace-restore").hidden = true;
     setWorkspaceView(view);
   }
@@ -574,6 +576,7 @@
     const dock = $("#workspace-dock");
     dock.hidden = true;
     dock.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("workspace-open");
     $("#workspace-settings").hidden = true;
     $("#workspace-customize").setAttribute("aria-expanded", "false");
     $("#workspace-restore").hidden = false;
@@ -1452,7 +1455,8 @@
   }
 
   const SVG_NS = "http://www.w3.org/2000/svg";
-  let graphView = { x: 0, y: 0, width: 1000, height: 420 };
+  const GRAPH_BOUNDS = { width: 1000, height: 560 };
+  let graphView = { x: 0, y: 0, width: GRAPH_BOUNDS.width, height: GRAPH_BOUNDS.height };
   function svgElement(name, attributes = {}) {
     const element = document.createElementNS(SVG_NS, name);
     Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
@@ -1467,6 +1471,24 @@
     return point.matrixTransform(svg.getScreenCTM().inverse());
   }
 
+  function graphNodeBounds() {
+    const margin = 48;
+    return {
+      minX: graphView.x + margin,
+      maxX: graphView.x + graphView.width - margin,
+      minY: graphView.y + margin,
+      maxY: graphView.y + graphView.height - margin,
+    };
+  }
+
+  function clampGraphPoint(point) {
+    const bounds = graphNodeBounds();
+    return {
+      x: Math.max(bounds.minX, Math.min(bounds.maxX, Math.round(point.x))),
+      y: Math.max(bounds.minY, Math.min(bounds.maxY, Math.round(point.y))),
+    };
+  }
+
   function updateNodeSelectors() {
     ["#edge-source", "#edge-target"].forEach(selector => {
       const select = $(selector);
@@ -1479,15 +1501,41 @@
 
   function selectGraphNode(id) {
     state.selectedNode = id;
+    state.selectedEdge = "";
     const node = state.graph.nodes.find(item => item.id === id);
     const panel = $("#map-selection");
     panel.hidden = !node;
     if (node) {
+      $("#selection-kicker").textContent = "SELECTED NODE";
       $("#selected-node-label").textContent = node.label;
       $("#selected-node-meta").textContent = node.type.toUpperCase();
       $("#selected-node-note").textContent = node.note || "No context added.";
     }
+    $("#node-actions").hidden = !node;
+    $("#edge-actions").hidden = true;
+    $("#node-edit-form").hidden = true;
     $$(".neural-node", $("#neural-map")).forEach(item => item.classList.toggle("selected", item.dataset.nodeId === id));
+    $$(".neural-edge", $("#neural-map")).forEach(item => item.classList.remove("selected"));
+  }
+
+  function selectGraphEdge(id) {
+    const edge = state.graph.edges.find(item => item.id === id);
+    const source = state.graph.nodes.find(item => item.id === edge?.source);
+    const target = state.graph.nodes.find(item => item.id === edge?.target);
+    if (!edge || !source || !target) return;
+    state.selectedNode = "";
+    state.selectedEdge = id;
+    const panel = $("#map-selection");
+    panel.hidden = false;
+    $("#selection-kicker").textContent = "SELECTED RELATIONSHIP";
+    $("#selected-node-label").textContent = edge.label || "Unlabeled connection";
+    $("#selected-node-meta").textContent = `${source.label}  →  ${target.label}`;
+    $("#selected-node-note").textContent = "Relationships stay local and can be removed without affecting either entity.";
+    $("#node-actions").hidden = true;
+    $("#edge-actions").hidden = false;
+    $("#node-edit-form").hidden = true;
+    $$(".neural-node", $("#neural-map")).forEach(item => item.classList.remove("selected"));
+    $$(".neural-edge", $("#neural-map")).forEach(item => item.classList.toggle("selected", item.dataset.edgeId === id));
   }
 
   const REGION_ALIASES = new Map([["cali", "California"], ["calif", "California"], ["ca", "California"], ["california", "California"], ["ny", "New York"], ["tx", "Texas"], ["fl", "Florida"], ["usa", "United States"], ["us", "United States"], ["uk", "United Kingdom"], ["england", "United Kingdom"], ["au", "Australia"], ["mx", "Mexico"]]);
@@ -1542,7 +1590,10 @@
       const curve = Math.min(90, Math.hypot(dx, dy) * .18);
       const middleX = (source.x + target.x) / 2 - (dy ? Math.sign(dy) : 1) * curve;
       const middleY = (source.y + target.y) / 2 + (dx ? Math.sign(dx) : 1) * curve;
-      const path = svgElement("path", { d: `M ${source.x} ${source.y} Q ${middleX} ${middleY} ${target.x} ${target.y}`, class: "neural-edge" });
+      const path = svgElement("path", { d: `M ${source.x} ${source.y} Q ${middleX} ${middleY} ${target.x} ${target.y}`, class: `neural-edge${state.selectedEdge === edge.id ? " selected" : ""}`, tabindex: "0", role: "button", "aria-label": `${source.label} to ${target.label}${edge.label ? `: ${edge.label}` : ""}` });
+      path.dataset.edgeId = edge.id;
+      path.addEventListener("click", event => { event.stopPropagation(); selectGraphEdge(edge.id); });
+      path.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectGraphEdge(edge.id); } });
       svg.append(path);
       if (edge.label) {
         const label = svgElement("text", { x: middleX, y: middleY - 8, class: "neural-edge-label", "text-anchor": "middle" });
@@ -1551,7 +1602,9 @@
       }
     });
     state.graph.nodes.forEach(node => {
-      node.y = Math.max(32, Math.min(388, Number(node.y) || 210));
+      const point = clampGraphPoint({ x: Number(node.x) || 500, y: Number(node.y) || 280 });
+      node.x = point.x;
+      node.y = point.y;
       const group = svgElement("g", { class: `neural-node type-${node.type}${state.selectedNode === node.id ? " selected" : ""}`, transform: `translate(${node.x} ${node.y})`, tabindex: "0", role: "button", "aria-label": `${node.label}, ${node.type}` });
       group.dataset.nodeId = node.id;
       group.append(svgElement("circle", { r: "24" }), svgElement("circle", { r: "15", class: "node-core" }));
@@ -1566,6 +1619,7 @@
       });
       group.addEventListener("pointerdown", event => {
         event.preventDefault();
+        event.stopPropagation();
         draggingNode = node.id;
         selectGraphNode(node.id);
       });
@@ -1573,18 +1627,22 @@
     });
     $("#map-empty").hidden = Boolean(state.graph.nodes.length);
     $("#map-count").textContent = `${state.graph.nodes.length} ${state.graph.nodes.length === 1 ? "NODE" : "NODES"}`;
+    $("#map-zoom-readout").textContent = `${Math.round((GRAPH_BOUNDS.width / graphView.width) * 100)}%`;
     updateNodeSelectors();
     if (state.selectedNode && !nodeMap.has(state.selectedNode)) selectGraphNode("");
   }
 
   let draggingNode = "";
+  let panningGraph = false;
+  let panStart = null;
   function handleGraphPointerMove(event) {
     if (!draggingNode) return;
     const node = state.graph.nodes.find(item => item.id === draggingNode);
     if (!node) return;
     const point = graphPoint(event);
-    node.x = Math.max(48, Math.min(952, Math.round(point.x)));
-    node.y = Math.max(32, Math.min(388, Math.round(point.y)));
+    const clamped = clampGraphPoint(point);
+    node.x = clamped.x;
+    node.y = clamped.y;
     renderGraph();
   }
 
@@ -1594,13 +1652,64 @@
     persistWorkspace();
   }
 
+  function handleGraphPanStart(event) {
+    if (event.target !== event.currentTarget) return;
+    event.preventDefault();
+    panningGraph = true;
+    panStart = { x: event.clientX, y: event.clientY, viewX: graphView.x, viewY: graphView.y };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handleGraphPanMove(event) {
+    if (!panningGraph || !panStart) return;
+    const svg = $("#neural-map");
+    const rect = svg.getBoundingClientRect();
+    graphView.x = panStart.viewX - (event.clientX - panStart.x) * graphView.width / rect.width;
+    graphView.y = panStart.viewY - (event.clientY - panStart.y) * graphView.height / rect.height;
+    renderGraph();
+  }
+
+  function finishGraphPan() {
+    if (!panningGraph) return;
+    panningGraph = false;
+    panStart = null;
+    localStorage.setItem("cros-map-view", JSON.stringify(graphView));
+  }
+
   function zoomGraph(event) {
     event.preventDefault();
     const factor = event.deltaY > 0 ? 1.12 : 0.89;
     const point = graphPoint(event);
     const width = Math.max(420, Math.min(1400, graphView.width * factor));
-    const height = Math.max(220, Math.min(700, graphView.height * factor));
-    graphView = { x: Math.max(-200, Math.min(800, point.x - (point.x - graphView.x) * (width / graphView.width))), y: Math.max(-140, Math.min(360, point.y - (point.y - graphView.y) * (height / graphView.height))), width, height };
+    const height = Math.max(280, Math.min(1100, graphView.height * factor));
+    graphView = { x: point.x - (point.x - graphView.x) * (width / graphView.width), y: point.y - (point.y - graphView.y) * (height / graphView.height), width, height };
+    localStorage.setItem("cros-map-view", JSON.stringify(graphView));
+    renderGraph();
+  }
+
+  function setGraphZoom(factor) {
+    const center = { x: graphView.x + graphView.width / 2, y: graphView.y + graphView.height / 2 };
+    const width = Math.max(420, Math.min(1800, graphView.width * factor));
+    const height = Math.max(280, Math.min(1100, graphView.height * factor));
+    graphView = { x: center.x - width / 2, y: center.y - height / 2, width, height };
+    localStorage.setItem("cros-map-view", JSON.stringify(graphView));
+    renderGraph();
+  }
+
+  function fitGraph() {
+    if (!state.graph.nodes.length) { resetGraphView(); return; }
+    const xs = state.graph.nodes.map(node => Number(node.x) || 500);
+    const ys = state.graph.nodes.map(node => Number(node.y) || 280);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const width = Math.max(420, Math.min(1800, maxX - minX + 260));
+    const height = Math.max(280, Math.min(1100, maxY - minY + 220));
+    graphView = { x: (minX + maxX) / 2 - width / 2, y: (minY + maxY) / 2 - height / 2, width, height };
+    localStorage.setItem("cros-map-view", JSON.stringify(graphView));
+    renderGraph();
+  }
+
+  function resetGraphView() {
+    graphView = { x: 0, y: 0, width: GRAPH_BOUNDS.width, height: GRAPH_BOUNDS.height };
     localStorage.setItem("cros-map-view", JSON.stringify(graphView));
     renderGraph();
   }
@@ -1654,6 +1763,16 @@
     renderGraph();
     $("#map-selection").hidden = true;
     toast("Node removed", "The node and its connected relationships were removed.");
+  }
+
+  function deleteSelectedEdge() {
+    if (!state.selectedEdge) return;
+    state.graph.edges = state.graph.edges.filter(edge => edge.id !== state.selectedEdge);
+    state.selectedEdge = "";
+    persistWorkspace();
+    renderGraph();
+    $("#map-selection").hidden = true;
+    toast("Relationship removed", "The entities remain on the map.");
   }
 
   function toolByKey(key) { return state.tools.find(tool => tool.key === key); }
@@ -2267,7 +2386,7 @@
   }
 
   function setInterfacePreset(value, save = true) {
-    const available = new Set(["flux", "cros", "arctic", "matrix", "amber", "mono", "ocean", "rose", "cyber", "midnight"]);
+    const available = new Set(["flux", "cros", "arctic", "matrix", "amber", "mono", "ocean", "rose", "cyber", "midnight", "minimal", "slate", "paper", "graphite", "linen", "vs-dark", "vs-light", "vs-contrast"]);
     const selected = available.has(value) ? value : "flux";
     document.documentElement.dataset.interfacePreset = selected;
     $$('[data-interface-preset]').forEach(button => {
@@ -2440,10 +2559,16 @@
     $("#node-form").addEventListener("submit", addGraphNode);
     $("#edge-form").addEventListener("submit", addGraphEdge);
     $("#delete-node").addEventListener("click", deleteSelectedNode);
+    $("#delete-edge").addEventListener("click", deleteSelectedEdge);
     $("#edit-node").addEventListener("click", editSelectedNode);
     $("#node-edit-form").addEventListener("submit", saveEditedNode);
     $("#cancel-node-edit").addEventListener("click", () => { $("#node-edit-form").hidden = true; });
     $("#neural-map").addEventListener("wheel", zoomGraph, { passive: false });
+    $("#neural-map").addEventListener("pointerdown", handleGraphPanStart);
+    $("#map-zoom-out").addEventListener("click", () => setGraphZoom(1.18));
+    $("#map-zoom-in").addEventListener("click", () => setGraphZoom(0.85));
+    $("#map-fit").addEventListener("click", fitGraph);
+    $("#map-reset").addEventListener("click", resetGraphView);
     $("#name-search-form").addEventListener("submit", searchNames);
     $$("[data-playbook-tool]").forEach(button => button.addEventListener("click", () => launchTool(button.dataset.playbookTool)));
     $("#name-provider-picker").addEventListener("click", event => {
@@ -2499,11 +2624,14 @@
       if (event.key === "ArrowRight") { event.preventDefault(); resizeWorkspaceBy(-24); }
     });
     addEventListener("pointermove", handleGraphPointerMove);
+    addEventListener("pointermove", handleGraphPanMove);
     addEventListener("pointermove", handleWorkspaceResize);
     addEventListener("pointermove", handleWorkspaceDrag);
     addEventListener("pointerup", finishGraphDrag);
+    addEventListener("pointerup", finishGraphPan);
     addEventListener("pointerup", () => { workspaceResizing = false; workspaceDragging = false; });
     addEventListener("pointercancel", finishGraphDrag);
+    addEventListener("pointercancel", finishGraphPan);
     addEventListener("pointercancel", () => { workspaceResizing = false; });
     addEventListener("resize", handleWorkspaceViewportChange);
     $$('[data-filter]').forEach(button => button.addEventListener("click", () => setFilter(button.dataset.filter)));

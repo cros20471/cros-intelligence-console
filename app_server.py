@@ -1464,7 +1464,7 @@ def install_desktop_shortcut() -> None:
     for desktop in destinations:
         try:
             desktop.mkdir(parents=True, exist_ok=True)
-            shortcut = desktop / "Cros Intelligence Center.lnk"
+            shortcut = desktop / "Cros Intelligence Center - Private Dev.lnk"
             script = (
                 "$shell=New-Object -ComObject WScript.Shell;"
                 f"$shortcut=$shell.CreateShortcut('{ps_quote(shortcut)}');"
