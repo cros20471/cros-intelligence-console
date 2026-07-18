@@ -1053,14 +1053,23 @@
     const panel = $("#native-tool-panel");
     panel.replaceChildren(); panel.hidden = true;
     if (category === "osint" && String(id) === "4") {
-      panel.innerHTML = `<div class="native-tool-head"><span>BREACH INTELLIGENCE · METADATA ONLY</span><h4>Breach exposure check</h4><p>Check an email with Have I Been Pwned. Cros shows breach names, dates, data categories, and verified details links—not passwords or stolen records.</p></div><form class="native-workflow-form" id="native-breach-form"><label class="native-field"><span>EMAIL ADDRESS</span><input id="native-breach-target" type="email" maxlength="320" placeholder="you@example.com" required></label><button class="primary-button" type="submit">CHECK BREACHES <span>→</span></button></form><div class="native-generated-results" id="native-generated-results"></div>`;
+      panel.innerHTML = `<div class="native-tool-head"><span>BREACH INTELLIGENCE · METADATA ONLY</span><h4>Breach exposure check</h4><p>Check an email with Have I Been Pwned, or check a username against free public profile sources. Cros never displays passwords or stolen records.</p></div><form class="native-workflow-form" id="native-breach-form"><label class="native-field"><span>CHECK TYPE</span><select id="native-breach-mode"><option value="email">Email breach metadata · HIBP API</option><option value="username">Username · free public profiles</option></select></label><label class="native-field"><span id="native-breach-target-label">EMAIL ADDRESS</span><input id="native-breach-target" type="email" maxlength="320" placeholder="you@example.com" required></label><div class="native-inline-links"><a href="https://haveibeenpwned.com/API/Key" target="_blank" rel="noreferrer">GET HIBP API KEY</a><a href="https://haveibeenpwned.com/" target="_blank" rel="noreferrer">FREE MANUAL HIBP CHECK</a></div><button class="primary-button" type="submit">RUN CHECK <span>→</span></button></form><div class="native-generated-results" id="native-generated-results"></div>`;
       panel.hidden = false;
+      const mode = panel.querySelector("#native-breach-mode");
+      const targetInput = panel.querySelector("#native-breach-target");
+      const targetLabel = panel.querySelector("#native-breach-target-label");
+      mode.addEventListener("change", () => { const username = mode.value === "username"; targetInput.type = username ? "text" : "email"; targetInput.placeholder = username ? "public handle" : "you@example.com"; targetLabel.textContent = username ? "PUBLIC USERNAME" : "EMAIL ADDRESS"; });
       panel.querySelector("#native-breach-form").addEventListener("submit", async event => {
         event.preventDefault();
-        const target = panel.querySelector("#native-breach-target").value.trim();
+        const target = targetInput.value.trim();
         const root = panel.querySelector("#native-generated-results"); root.replaceChildren();
-        const status = document.createElement("div"); status.className = "blackbird-live-note"; status.textContent = "Checking Have I Been Pwned metadata…"; root.append(status);
-        try { await runBreachCheck(target, root); }
+        const status = document.createElement("div"); status.className = "blackbird-live-note"; status.textContent = mode.value === "username" ? "Checking free public username sources…" : "Checking Have I Been Pwned metadata…"; root.append(status);
+        try {
+          if (mode.value === "username") {
+            const response = await api("/api/free-public-search", { method: "POST", body: JSON.stringify({ username: target }) });
+            root.replaceChildren(); renderPublicProviderResults(root, "FREE PUBLIC USERNAME RESULTS", response.results, "Public profile matches are leads and are not proof that accounts belong to the same person."); updateSessionProgress({ done: true, returncode: 0, stage: "Username check complete" });
+          } else await runBreachCheck(target, root);
+        }
         catch (error) { root.replaceChildren(); const warning = document.createElement("p"); warning.textContent = error.message; root.append(warning); updateSessionProgress({ done: true, returncode: 1, stage: "Breach check unavailable" }); }
       });
       setTimeout(() => panel.querySelector("#native-breach-target")?.focus(), 0);
