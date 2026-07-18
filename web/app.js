@@ -1074,7 +1074,7 @@
             const response = await api("/api/free-public-search", { method: "POST", body: JSON.stringify({ username: target }) });
             root.replaceChildren(); renderPublicProviderResults(root, "FREE PUBLIC USERNAME RESULTS", response.results, "Public profile matches are leads and are not proof that accounts belong to the same person."); updateSessionProgress({ done: true, returncode: 0, stage: "Username check complete" });
           } else if (mode.value === "password") {
-            const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(target)); const hex = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase(); const response = await api("/api/hibp-password-check", { method: "POST", body: JSON.stringify({ prefix: hex.slice(0, 5), suffix: hex.slice(5) }) }); root.replaceChildren(); const result = document.createElement("div"); result.className = `password-result ${response.found ? "is-exposed" : "is-clear"}`; result.innerHTML = `<strong>${response.found ? "PASSWORD FOUND IN BREACH DATA" : "PASSWORD NOT FOUND IN HIBP DATA"}</strong><span>${response.found ? `${Number(response.count).toLocaleString()} observed matches` : "No match returned by the free k-anonymous check"}. The password itself was never sent.</span>`; root.append(result); targetInput.value = ""; updateSessionProgress({ done: true, returncode: 0, stage: "Password privacy check complete" });
+            const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(target)); const hex = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase(); const response = await api("/api/hibp-password-check", { method: "POST", body: JSON.stringify({ prefix: hex.slice(0, 5), suffix: hex.slice(5) }) }); root.replaceChildren(); const result = document.createElement("div"); result.className = `password-result ${response.found ? "is-exposed" : "is-clear"}`; result.innerHTML = `<strong>${response.found ? "PASSWORD FOUND IN BREACH DATA" : "PASSWORD NOT FOUND IN HIBP DATA"}</strong><span>${response.found ? `${Number(response.count).toLocaleString()} observed matches` : "No match returned by the free k-anonymous check"}. The password itself was never sent.</span>`; root.append(result); appendExposureChecklist(root, response.found ? ["Password"] : [], false); targetInput.value = ""; updateSessionProgress({ done: true, returncode: 0, stage: "Password privacy check complete" });
           } else await runBreachCheck(target, root, true, mode.value === "email-hibp" ? "hibp" : "xposedornot");
         }
         catch (error) { root.replaceChildren(); const warning = document.createElement("p"); warning.textContent = error.message; root.append(warning); updateSessionProgress({ done: true, returncode: 1, stage: "Breach check unavailable" }); }
@@ -1323,9 +1323,16 @@
     const totalRecords = results.reduce((sum, item) => sum + Number(item.pwn_count || item.PwnCount || 0), 0);
     const riskScore = Math.min(100, results.reduce((sum, item) => sum + (breachRisk(item)[0] === "CRITICAL" ? 30 : breachRisk(item)[0] === "HIGH" ? 22 : breachRisk(item)[0] === "MEDIUM" ? 12 : 5), 0));
     const stats = document.createElement("div"); stats.className = "breach-summary-stats"; [["TOTAL BREACHES", results.length], ["AFFECTED RECORDS", totalRecords.toLocaleString()], ["PASSWORD-EXPOSED RECORDS", passwordRecords.toLocaleString()], ["RISK SCORE", `${riskScore}/100`]].forEach(([label, value]) => { const card = document.createElement("div"); card.className = "breach-stat"; const valueEl = document.createElement("strong"); valueEl.textContent = value; const labelEl = document.createElement("span"); labelEl.textContent = label; card.append(valueEl, labelEl); stats.append(card); }); dashboard.append(stats);
-    if (!results.length) { const empty = document.createElement("strong"); empty.textContent = `No breaches found for ${target} in the connected free database.`; dashboard.append(empty); root.append(dashboard); return; }
+    if (!results.length) { appendExposureChecklist(dashboard, [], false); const empty = document.createElement("strong"); empty.textContent = `No breaches found for ${target} in the connected free database.`; dashboard.append(empty); root.append(dashboard); return; }
     const cards = document.createElement("div"); cards.className = "breach-card-grid";
     results.forEach(item => { const card = document.createElement("article"); card.className = "breach-card"; const [risk, riskClass] = breachRisk(item); const head = document.createElement("div"); head.className = "breach-card-head"; const name = document.createElement("h5"); name.textContent = item.service || item.Name || "Unnamed breach"; const badge = document.createElement("b"); badge.className = `risk-badge ${riskClass}`; badge.textContent = risk; head.append(name, badge); card.append(head); const meta = document.createElement("div"); meta.className = "breach-card-meta"; [["DATE", item.breach_date || item.BreachDate || "Unavailable"], ["AFFECTED", Number(item.pwn_count || item.PwnCount || 0).toLocaleString()], ["DOMAIN", item.domain || item.Domain || "Unavailable"]].forEach(([label, value]) => { const row = document.createElement("span"); row.innerHTML = `<small>${label}</small><strong></strong>`; row.querySelector("strong").textContent = value; meta.append(row); }); card.append(meta); const fields = document.createElement("div"); fields.className = "breach-field-preview"; (item.data_types || item.DataClasses || ["Metadata unavailable"]).forEach(value => { const chip = document.createElement("span"); chip.textContent = `✓ ${value}`; fields.append(chip); }); card.append(fields); const button = document.createElement("button"); button.className = "breach-detail-button"; button.type = "button"; button.textContent = "LOAD FULL METADATA"; button.addEventListener("click", () => loadBreachDetails(card, item)); card.append(button); cards.append(card); }); dashboard.append(cards); root.append(dashboard);
+  }
+
+  function addDashboardChecklists(root, results) {
+    const cards = [...root.querySelectorAll(".breach-card")];
+    cards.forEach((card, index) => {
+      if (!card.querySelector(".exposure-checklist")) appendExposureChecklist(card, results[index]?.data_types || results[index]?.DataClasses || [], false);
+    });
   }
 
   async function runBreachCheck(target, root, progress = true, provider = "xposedornot") {
@@ -1333,6 +1340,7 @@
     const key = localStorage.getItem("cros-hibp-key") || "";
     const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, api_key: key, provider }) });
     renderBreachDashboard(root, response, target);
+    addDashboardChecklists(root, Array.isArray(response.results || response.breaches) ? (response.results || response.breaches) : []);
     if (progress) updateSessionProgress({ done: true, returncode: 0, stage: "Breach metadata check complete" });
     return response;
   }
@@ -1380,13 +1388,24 @@
     }
   }
 
+  function appendExposureChecklist(parent, dataTypes = [], unavailable = false) {
+    const known = ["Email", "Password", "Username", "IP address", "Location", "Phone", "Name", "Date of birth", "Address", "Financial", "Social profiles"];
+    const normalized = dataTypes.map(value => String(value).toLowerCase());
+    const checklist = document.createElement("div"); checklist.className = "exposure-checklist";
+    known.forEach(label => { const exposed = normalized.some(value => value.includes(label.toLowerCase().replace(" ", " ")) || (label === "IP address" && value.includes("ip address")) || (label === "Password" && value.includes("password"))); const item = document.createElement("span"); item.className = exposed ? "is-exposed" : "is-clear"; item.textContent = unavailable ? `— ${label} · source not provided` : `${exposed ? "✓" : "—"} ${label}`; checklist.append(item); });
+    parent.append(checklist);
+    return checklist;
+  }
+
   function renderPublicProviderResults(root, title, results, note = "") {
     const block = document.createElement("section"); block.className = "provider-result provider-visible";
     const heading = document.createElement("h4"); heading.textContent = title; block.append(heading);
     if (note) { const copy = document.createElement("p"); copy.textContent = note; block.append(copy); }
-    (Array.isArray(results) ? results : []).forEach(item => {
+    const publicResults = Array.isArray(results) ? results : [];
+    if (!publicResults.length) appendExposureChecklist(block, [], true);
+    publicResults.forEach(item => {
       const row = document.createElement("div"); row.className = "public-provider-row";
-      const info = document.createElement("div"); const name = document.createElement("strong"); name.textContent = item.source || "Public source"; const detail = document.createElement("span"); detail.textContent = item.found ? `@${item.username || "match"}` : "No public profile found"; info.append(name, detail); row.append(info);
+      const info = document.createElement("div"); const name = document.createElement("strong"); name.textContent = item.source || "Public source"; const detail = document.createElement("span"); detail.textContent = item.found ? `@${item.username || "match"}` : "No public profile found"; info.append(name, detail); appendExposureChecklist(info, [], true); row.append(info);
       if (item.found && item.profile) { const link = document.createElement("a"); link.href = item.profile; link.target = "_blank"; link.rel = "noreferrer"; link.textContent = "OPEN PROFILE ↗"; row.append(link); }
       block.append(row);
     });
