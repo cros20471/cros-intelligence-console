@@ -17,6 +17,8 @@ workspace_state.json
 appearance_state.json
 settings.json
 local_key_vault.json
+breach_cache.json
+breach_check.log
 reports/
 web/cros-icon-*.ico
 web/cros-logo-original.png

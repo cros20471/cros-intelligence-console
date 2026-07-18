@@ -52,6 +52,10 @@ APPEARANCE_STATE_FILE = APP_DIR / "appearance_state.json"
 APPEARANCE_STATE_LOCK = threading.Lock()
 KEY_VAULT_FILE = APP_DIR / "local_key_vault.json"
 KEY_VAULT_LOCK = threading.Lock()
+BREACH_CACHE_FILE = APP_DIR / "breach_cache.json"
+BREACH_CACHE_LOCK = threading.Lock()
+BREACH_RATE_LOCK = threading.Lock()
+BREACH_LAST_REQUEST = 0.0
 # OSINT Dog's edge currently rejects the default Python 3.14 cipher offer on
 # some Windows installations. Keep certificate verification enabled while
 # allowing a compatible TLS 1.2 cipher set for this provider only.
@@ -375,25 +379,26 @@ def unprotect_local_key(value: str) -> str:
 def read_provider_keys() -> dict[str, str]:
     try:
         saved = json.loads(KEY_VAULT_FILE.read_text(encoding="utf-8"))
-        return {name: unprotect_local_key(str(value)) for name, value in saved.items() if name in {"osintdog"} and value}
+        return {name: unprotect_local_key(str(value)) for name, value in saved.items() if name in {"osintdog", "hibp"} and value}
     except (OSError, ValueError, json.JSONDecodeError, binascii.Error, UnicodeError):
         return {}
 
 
 def write_provider_keys(value: object) -> dict[str, bool]:
     incoming = value if isinstance(value, dict) else {}
-    keys = {name: str(incoming.get(name, "")).strip() for name in ("osintdog",) if str(incoming.get(name, "")).strip()}
+    keys = read_provider_keys()
+    keys.update({name: str(incoming.get(name, "")).strip() for name in ("osintdog", "hibp") if str(incoming.get(name, "")).strip()})
     encrypted = {name: protect_local_key(secret) for name, secret in keys.items()}
     temporary = KEY_VAULT_FILE.with_suffix(".tmp")
     with KEY_VAULT_LOCK:
         temporary.write_text(json.dumps(encrypted, indent=2), encoding="utf-8")
         os.replace(temporary, KEY_VAULT_FILE)
-    return {"osintdog": bool(keys.get("osintdog"))}
+    return {"osintdog": bool(keys.get("osintdog")), "hibp": bool(keys.get("hibp"))}
 
 
 def clear_local_data() -> None:
     """Remove only Cros-generated local state; never touch user files."""
-    for path in (WORKSPACE_STATE_FILE, APPEARANCE_STATE_FILE, LEARNING_PROGRESS_FILE, APP_DIR / "settings.json", KEY_VAULT_FILE):
+    for path in (WORKSPACE_STATE_FILE, APPEARANCE_STATE_FILE, LEARNING_PROGRESS_FILE, APP_DIR / "settings.json", KEY_VAULT_FILE, BREACH_CACHE_FILE, APP_DIR / "breach_check.log"):
         try:
             path.unlink(missing_ok=True)
         except OSError:
@@ -408,6 +413,109 @@ def redact_sensitive_lookup_data(value: object) -> object:
     if isinstance(value, list):
         return [redact_sensitive_lookup_data(item) for item in value[:200]]
     return value
+
+
+def _breach_log(message: str) -> None:
+    """Write troubleshooting metadata without storing targets, keys, or raw responses."""
+    try:
+        with (APP_DIR / "breach_check.log").open("a", encoding="utf-8") as stream:
+            stream.write(f"{datetime.utcnow().isoformat()}Z {message[:240]}\n")
+    except OSError:
+        pass
+
+
+def _breach_target_kind(target: str) -> str:
+    if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", target):
+        return "email"
+    if re.fullmatch(r"(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,63}", target):
+        return "domain"
+    if re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", target):
+        return "username"
+    return "invalid"
+
+
+def _load_breach_cache() -> dict[str, object]:
+    try:
+        value = json.loads(BREACH_CACHE_FILE.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_breach_cache(cache: dict[str, object]) -> None:
+    temporary = BREACH_CACHE_FILE.with_suffix(".tmp")
+    with BREACH_CACHE_LOCK:
+        temporary.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+        os.replace(temporary, BREACH_CACHE_FILE)
+
+
+def breach_check(target: str, api_key: str = "") -> dict[str, object]:
+    """Return HIBP breach metadata only; never return credentials or raw breach records."""
+    global BREACH_LAST_REQUEST
+    target = _short_text(target, 320)
+    kind = _breach_target_kind(target)
+    if kind == "invalid":
+        raise ValueError("Enter an email address, username, or domain.")
+    if kind != "email":
+        return {"target_type": kind, "supported": False, "results": [],
+                "message": "HIBP account exposure checks require an email address. Username and domain checks need a verified provider endpoint."}
+    cache_key = hashlib.sha256(target.lower().encode("utf-8")).hexdigest()
+    now = time.time()
+    cache = _load_breach_cache()
+    cached = cache.get(cache_key)
+    if isinstance(cached, dict) and now - float(cached.get("saved_at", 0)) < 86400:
+        _breach_log("cache-hit")
+        return {"target_type": "email", "cached": True, "results": cached.get("results", [])}
+    api_key = api_key.strip() or read_provider_keys().get("hibp", "")
+    if not re.fullmatch(r"[0-9a-fA-F]{32}", api_key):
+        raise ValueError("Add your HIBP API key in Settings before running a breach check.")
+    with BREACH_RATE_LOCK:
+        delay = 1.5 - (time.monotonic() - BREACH_LAST_REQUEST)
+        if delay > 0:
+            time.sleep(delay)
+        BREACH_LAST_REQUEST = time.monotonic()
+    request = urllib.request.Request(
+        "https://haveibeenpwned.com/api/v3/breachedaccount/" + urllib.parse.quote(target, safe=""),
+        headers={"hibp-api-key": api_key, "user-agent": "Cros-Intelligence-Center/1.0", "accept": "application/json"},
+    )
+    _breach_log("request-start provider=hibp")
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8")) if response.status != 404 else []
+        raw_results = payload if isinstance(payload, list) else []
+        results = []
+        seen: set[str] = set()
+        for item in raw_results:
+            if not isinstance(item, dict):
+                continue
+            name = _short_text(item.get("Name"), 120)
+            if not name or name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            results.append({
+                "source": "Have I Been Pwned",
+                "service": name,
+                "domain": _short_text(item.get("Domain"), 160),
+                "breach_date": _short_text(item.get("BreachDate"), 32),
+                "data_types": [str(value)[:80] for value in item.get("DataClasses", []) if str(value)][:30],
+                "verified": bool(item.get("IsVerified")),
+            })
+        _save_breach_cache({**cache, cache_key: {"saved_at": now, "results": results}})
+        _breach_log(f"request-complete status=200 results={len(results)}")
+        return {"target_type": "email", "cached": False, "results": results}
+    except urllib.error.HTTPError as exc:
+        _breach_log(f"request-error status={exc.code}")
+        if exc.code == 404:
+            _save_breach_cache({**cache, cache_key: {"saved_at": now, "results": []}})
+            return {"target_type": "email", "cached": False, "results": []}
+        if exc.code == 429:
+            raise OSError("HIBP rate limit reached. Try again later.") from exc
+        if exc.code in {401, 403}:
+            raise ValueError("HIBP rejected the API key or request.") from exc
+        raise OSError(f"HIBP returned HTTP {exc.code}.") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        _breach_log(f"request-error type={type(exc).__name__}")
+        raise OSError(f"Could not reach HIBP: {exc}") from exc
 
 
 def console_python() -> str:
@@ -1740,24 +1848,17 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as exc:
                 self.json_response({"error": str(exc)}, 500)
             return
-        if route == "/api/hibp-check":
-            email = str(body.get("email", "")).strip()
-            api_key = str(body.get("api_key", "")).strip()
-            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-                self.json_response({"error": "Enter a valid email address."}, 400); return
-            if not re.fullmatch(r"[0-9a-fA-F]{32}", api_key):
-                self.json_response({"error": "HIBP API keys must be 32 hexadecimal characters."}, 400); return
-            request = urllib.request.Request("https://haveibeenpwned.com/api/v3/breachedaccount/" + urllib.parse.quote(email), headers={"hibp-api-key": api_key, "user-agent": "Cros-Intelligence-Console"})
+        if route in {"/api/hibp-check", "/api/breach-check"}:
+            target = str(body.get("email", body.get("target", ""))).strip()
             try:
-                with urllib.request.urlopen(request, timeout=20) as response:
-                    payload = json.loads(response.read().decode("utf-8")) if response.status != 404 else []
-                self.json_response({"found": True, "breaches": payload if isinstance(payload, list) else []})
-            except urllib.error.HTTPError as exc:
-                if exc.code == 404: self.json_response({"found": False, "breaches": []})
-                elif exc.code in {401, 403}: self.json_response({"error": "HIBP rejected the API key or request."}, 400)
-                else: self.json_response({"error": f"HIBP returned HTTP {exc.code}."}, 502)
-            except (OSError, json.JSONDecodeError) as exc:
-                self.json_response({"error": f"Could not reach HIBP: {exc}"}, 502)
+                result = breach_check(target, str(body.get("api_key", "")))
+                result["found"] = bool(result.get("results"))
+                result["breaches"] = result.get("results", [])
+                self.json_response(result)
+            except ValueError as exc:
+                self.json_response({"error": str(exc)}, 400)
+            except OSError as exc:
+                self.json_response({"error": str(exc)}, 502)
             return
         if route == "/api/osintdog-search":
             username = str(body.get("username", "")).strip()

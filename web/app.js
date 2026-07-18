@@ -90,6 +90,7 @@
     try {
       const saved = await api("/api/provider-keys");
       if (saved.osintdog) localStorage.setItem("cros-osintdog-key", saved.osintdog);
+      if (saved.hibp) { localStorage.setItem("cros-hibp-key", saved.hibp); const input = $("#hibp-api-key"); if (input) input.value = saved.hibp; }
     } catch (_) {}
   }
 
@@ -1052,6 +1053,20 @@
     const panel = $("#native-tool-panel");
     panel.replaceChildren(); panel.hidden = true;
     if (category === "osint" && String(id) === "4") {
+      panel.innerHTML = `<div class="native-tool-head"><span>BREACH INTELLIGENCE · METADATA ONLY</span><h4>Breach exposure check</h4><p>Check an email with Have I Been Pwned. Cros shows breach names, dates, data categories, and verified details links—not passwords or stolen records.</p></div><form class="native-workflow-form" id="native-breach-form"><label class="native-field"><span>EMAIL ADDRESS</span><input id="native-breach-target" type="email" maxlength="320" placeholder="you@example.com" required></label><button class="primary-button" type="submit">CHECK BREACHES <span>→</span></button></form><div class="native-generated-results" id="native-generated-results"></div>`;
+      panel.hidden = false;
+      panel.querySelector("#native-breach-form").addEventListener("submit", async event => {
+        event.preventDefault();
+        const target = panel.querySelector("#native-breach-target").value.trim();
+        const root = panel.querySelector("#native-generated-results"); root.replaceChildren();
+        const status = document.createElement("div"); status.className = "blackbird-live-note"; status.textContent = "Checking Have I Been Pwned metadata…"; root.append(status);
+        try { await runBreachCheck(target, root); }
+        catch (error) { root.replaceChildren(); const warning = document.createElement("p"); warning.textContent = error.message; root.append(warning); updateSessionProgress({ done: true, returncode: 1, stage: "Breach check unavailable" }); }
+      });
+      setTimeout(() => panel.querySelector("#native-breach-target")?.focus(), 0);
+      return true;
+    }
+    if (category === "osint" && String(id) === "4") {
       panel.innerHTML = `<div class="native-tool-head"><span>OFFICIAL SERVICE · PRIVACY-FIRST</span><h4>Breach notifications</h4><p>Use Have I Been Pwned's official notification page. Your email is entered on their website and is never collected by Cros.</p></div><div class="native-privacy-card"><i>✓</i><div><strong>No email entered in Cros</strong><span>The official service handles verification and notifications directly.</span></div></div><div class="native-generated-results" id="native-generated-results"></div>`;
       panel.hidden = false;
       renderNativeLinkResults(panel.querySelector("#native-generated-results"), { title: "Official breach notification service", links: [{ label: "Open Have I Been Pwned", host: "haveibeenpwned.com", url: "https://haveibeenpwned.com/NotifyMe", description: "Official email notification enrollment" }], note: "Cros does not collect, transmit, or store your email address." });
@@ -1233,6 +1248,33 @@
     }
   }
 
+  function renderBreachMetadata(root, payload, target) {
+    const block = document.createElement("section"); block.className = "provider-result breach-result";
+    const heading = document.createElement("h4"); heading.textContent = "BREACH CHECK · HIBP METADATA"; block.append(heading);
+    const note = document.createElement("p"); note.textContent = payload.cached ? "Showing a locally cached result from the last 24 hours." : "Only breach metadata is shown. Passwords and stolen records are never returned."; block.append(note);
+    if (payload.supported === false) { const unsupported = document.createElement("p"); unsupported.textContent = payload.message || "This input type is not supported by HIBP account checks."; block.append(unsupported); root.append(block); return; }
+    const results = Array.isArray(payload.results || payload.breaches) ? (payload.results || payload.breaches) : [];
+    if (!results.length) { const empty = document.createElement("strong"); empty.textContent = `No breaches found for ${target} in the connected database.`; block.append(empty); root.append(block); return; }
+    results.forEach(item => {
+      const row = document.createElement("article"); row.className = "breach-row";
+      const title = document.createElement("strong"); title.textContent = item.service || item.Name || "Unnamed breach";
+      const facts = document.createElement("span"); facts.textContent = `${item.breach_date || item.BreachDate || "Date unavailable"} · ${(item.data_types || item.DataClasses || []).join(", ") || "Categories unavailable"}`;
+      row.append(title, facts);
+      const link = document.createElement("a"); link.href = `https://haveibeenpwned.com/PwnedWebsites#${encodeURIComponent(item.service || item.Name || "")}`; link.target = "_blank"; link.rel = "noreferrer"; link.textContent = "VIEW DETAILS →"; row.append(link);
+      block.append(row);
+    });
+    root.append(block);
+  }
+
+  async function runBreachCheck(target, root, progress = true) {
+    if (progress) updateSessionProgress({ done: false, stage: "Checking HIBP breach metadata" });
+    const key = localStorage.getItem("cros-hibp-key") || "";
+    const response = await api("/api/breach-check", { method: "POST", body: JSON.stringify({ target, api_key: key }) });
+    renderBreachMetadata(root, response, target);
+    if (progress) updateSessionProgress({ done: true, returncode: 0, stage: "Breach metadata check complete" });
+    return response;
+  }
+
   async function searchNames(event) {
     event.preventDefault();
     const query = $("#name-search-query").value.trim();
@@ -1242,7 +1284,13 @@
     $("#name-search-loading").hidden = false;
     try {
       const root = $("#name-results");
+      const isEmailTarget = query.includes("@") && query.includes(".");
       root.replaceChildren();
+      if (isEmailTarget) {
+        const status = document.createElement("div"); status.className = "blackbird-live-note"; status.innerHTML = "<strong>BREACH CHECK</strong><span>Checking verified breach metadata alongside the public search.</span>"; root.append(status);
+        try { await runBreachCheck(query, root, false); } catch (error) { const warning = document.createElement("p"); warning.textContent = `Breach check unavailable: ${error.message}`; root.append(warning); }
+        return;
+      }
       if (provider === "quick") {
         const response = await api("/api/free-public-search", { method: "POST", body: JSON.stringify({ username: query }) });
         renderPublicProviderResults(root, "CROS QUICK CHECK", response.results,
@@ -2570,6 +2618,12 @@
     $("#map-fit").addEventListener("click", fitGraph);
     $("#map-reset").addEventListener("click", resetGraphView);
     $("#name-search-form").addEventListener("submit", searchNames);
+    $("#save-hibp-key")?.addEventListener("click", async () => {
+      const value = $("#hibp-api-key").value.trim();
+      if (!/^[0-9a-fA-F]{32}$/.test(value)) { toast("HIBP key not saved", "Use the 32-character key from your HIBP account.", true); return; }
+      try { await api("/api/provider-keys", { method: "POST", body: JSON.stringify({ hibp: value }) }); localStorage.setItem("cros-hibp-key", value); toast("HIBP key saved", "Stored locally for future breach checks."); }
+      catch (error) { toast("HIBP key not saved", error.message, true); }
+    });
     $$("[data-playbook-tool]").forEach(button => button.addEventListener("click", () => launchTool(button.dataset.playbookTool)));
     $("#name-provider-picker").addEventListener("click", event => {
       const button = event.target.closest(".engine-option");
