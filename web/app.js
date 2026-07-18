@@ -1058,6 +1058,7 @@
       const mode = panel.querySelector("#native-breach-mode");
       const targetInput = panel.querySelector("#native-breach-target");
       const targetLabel = panel.querySelector("#native-breach-target-label");
+      const tabs = document.createElement("div"); tabs.className = "breach-tabs"; [["email", "EMAIL"], ["password", "PASSWORD"], ["username", "USERNAME"]].forEach(([value, label]) => { const tab = document.createElement("button"); tab.type = "button"; tab.dataset.breachTab = value; tab.textContent = label; if (value === "email") tab.className = "active"; tab.addEventListener("click", () => { mode.value = value; mode.dispatchEvent(new Event("change")); tabs.querySelectorAll("button").forEach(item => item.classList.toggle("active", item === tab)); }); tabs.append(tab); }); mode.style.display = "none"; panel.querySelector("#native-breach-form").insertBefore(tabs, panel.querySelector("#native-breach-form").firstElementChild);
       const passwordOption = document.createElement("option"); passwordOption.value = "password"; passwordOption.textContent = "Password · HIBP k-anonymous check"; mode.append(passwordOption);
       const freeOption = mode.querySelector('option[value="email"]'); if (freeOption) freeOption.textContent = "Email breach metadata · XposedOrNot Free";
       const hibpOption = document.createElement("option"); hibpOption.value = "email-hibp"; hibpOption.textContent = "Email breach metadata · HIBP API (paid)"; mode.append(hibpOption);
