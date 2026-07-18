@@ -1056,7 +1056,6 @@
       panel.hidden = false;
       panel.querySelector(".native-tool-head p").textContent = "Email uses XposedOrNot free metadata, Password uses HIBP's free k-anonymous check, and Username uses clearly labeled local demo data. No paid HIBP email lookup is used.";
       panel.querySelector('a[href*="/API/Key"]')?.remove();
-      setupBreachCsvImport(panel);
       const mode = panel.querySelector("#native-breach-mode");
       const targetInput = panel.querySelector("#native-breach-target");
       const targetLabel = panel.querySelector("#native-breach-target-label");
@@ -1318,7 +1317,6 @@
   function renderBreachDashboard(root, payload, target) {
     const dashboard = document.createElement("section"); dashboard.className = "breach-dashboard";
     if (payload.demo) dashboard.dataset.demo = "true";
-    if (payload.imported) dashboard.dataset.imported = "true";
     const heading = document.createElement("div"); heading.className = "breach-dashboard-head"; const title = document.createElement("h4"); title.textContent = "BREACH AWARENESS DASHBOARD"; const note = document.createElement("p"); note.textContent = `${payload.cached ? "Cached for 24 hours · " : "Live provider result · "}Metadata only for ${target}. No credentials or stolen records are displayed.`; heading.append(title, note); dashboard.append(heading);
     if (payload.supported === false) { const unsupported = document.createElement("p"); unsupported.textContent = payload.message || "This input type is not supported."; dashboard.append(unsupported); root.append(dashboard); return; }
     const results = Array.isArray(payload.results || payload.breaches) ? (payload.results || payload.breaches) : [];
@@ -1331,36 +1329,6 @@
     results.forEach(item => { const card = document.createElement("article"); card.className = "breach-card"; const [risk, riskClass] = breachRisk(item); const head = document.createElement("div"); head.className = "breach-card-head"; const name = document.createElement("h5"); name.textContent = item.service || item.Name || "Unnamed breach"; const badge = document.createElement("b"); badge.className = `risk-badge ${riskClass}`; badge.textContent = risk; head.append(name, badge); card.append(head); const meta = document.createElement("div"); meta.className = "breach-card-meta"; [["DATE", item.breach_date || item.BreachDate || "Unavailable"], ["AFFECTED", Number(item.pwn_count || item.PwnCount || 0).toLocaleString()], ["DOMAIN", item.domain || item.Domain || "Unavailable"]].forEach(([label, value]) => { const row = document.createElement("span"); row.innerHTML = `<small>${label}</small><strong></strong>`; row.querySelector("strong").textContent = value; meta.append(row); }); card.append(meta); const fields = document.createElement("div"); fields.className = "breach-field-preview"; (item.data_types || item.DataClasses || ["Metadata unavailable"]).forEach(value => { const chip = document.createElement("span"); chip.textContent = `✓ ${value}`; fields.append(chip); }); card.append(fields); const button = document.createElement("button"); button.className = "breach-detail-button"; button.type = "button"; button.textContent = "LOAD FULL METADATA"; button.addEventListener("click", () => loadBreachDetails(card, item)); card.append(button); cards.append(card); }); dashboard.append(cards); root.append(dashboard);
   }
 
-  function parseBreachCsv(text) {
-    const rows = []; let row = []; let field = ""; let quoted = false;
-    for (let i = 0; i < text.length; i += 1) {
-      const char = text[i]; const next = text[i + 1];
-      if (char === '"' && quoted && next === '"') { field += '"'; i += 1; continue; }
-      if (char === '"') { quoted = !quoted; continue; }
-      if (char === "," && !quoted) { row.push(field.trim()); field = ""; continue; }
-      if ((char === "\n" || char === "\r") && !quoted) { if (char === "\r" && next === "\n") i += 1; row.push(field.trim()); if (row.some(Boolean)) rows.push(row); row = []; field = ""; continue; }
-      field += char;
-    }
-    row.push(field.trim()); if (row.some(Boolean)) rows.push(row);
-    if (rows.length < 2) return [];
-    const headers = rows.shift().map(value => value.toLowerCase());
-    return rows.slice(0, 5000).map(values => Object.fromEntries(headers.map((header, index) => [header, values[index] || ""]))).filter(item => item.email || item.password || item.source || item.date);
-  }
-
-  function renderImportedBreachCsv(root, rows, fileName) {
-    const results = rows.map((item, index) => ({ service: item.source || `Imported record ${index + 1}`, breach_date: item.date || "Unavailable", domain: "Local CSV", pwn_count: 1, email: item.email || "", password: item.password || "", username: item.username || "", ip: item.ip || "", location: item.location || "", data_types: item.password ? ["Password"] : [], extra_fields: Object.fromEntries(Object.entries(item).filter(([key]) => !["email", "password", "source", "date", "username", "ip", "location"].includes(key))), imported: true }));
-    root.replaceChildren(); renderBreachDashboard(root, { provider: "Local CSV", cached: false, imported: true, results }, fileName); addDashboardChecklists(root, results);
-  }
-
-  function setupBreachCsvImport(panel) {
-    const form = panel.querySelector("#native-breach-form"); if (!form) return;
-    const input = document.createElement("input"); input.type = "file"; input.accept = ".csv,text/csv"; input.hidden = true;
-    const button = document.createElement("button"); button.type = "button"; button.className = "secondary-button breach-import-button"; button.textContent = "IMPORT BREACH CSV"; button.title = "Read a local CSV in this browser only";
-    button.addEventListener("click", () => input.click());
-    input.addEventListener("change", async () => { const file = input.files?.[0]; if (!file) return; if (file.size > 10 * 1024 * 1024) { toast("CSV too large", "Choose a file smaller than 10 MB.", true); return; } try { const rows = parseBreachCsv(await file.text()); if (!rows.length) throw new Error("Use a header row such as email,password,source,date."); renderImportedBreachCsv(panel.querySelector("#native-generated-results"), rows, file.name); toast("Breach CSV imported", `${rows.length} local row${rows.length === 1 ? "" : "s"} loaded. Nothing was uploaded.`); } catch (error) { toast("CSV import failed", error.message, true); } finally { input.value = ""; } });
-    form.insertBefore(button, form.querySelector(".primary-button")); form.append(input);
-  }
-
   function appendDemoFields(parent, record) {
     if (!record?.email && !record?.password && !record?.username) return;
     const grid = document.createElement("div"); grid.className = "breach-demo-fields";
@@ -1371,18 +1339,10 @@
     parent.append(grid);
   }
 
-  function appendImportedExtraFields(parent, record) {
-    if (!record?.extra_fields || !Object.keys(record.extra_fields).length) return;
-    const grid = document.createElement("div"); grid.className = "breach-demo-fields";
-    Object.entries(record.extra_fields).slice(0, 20).forEach(([label, value]) => { const item = document.createElement("div"); const key = document.createElement("small"); key.textContent = label.toUpperCase(); const valueEl = document.createElement("strong"); valueEl.textContent = value; item.append(key, valueEl); grid.append(item); });
-    parent.append(grid);
-  }
-
   function addDashboardChecklists(root, results) {
     const cards = [...root.querySelectorAll(".breach-card")];
     cards.forEach((card, index) => {
       appendDemoFields(card, results[index]);
-      if (results[index]?.imported) appendImportedExtraFields(card, results[index]);
       if (!card.querySelector(".exposure-checklist")) appendExposureChecklist(card, results[index]?.data_types || results[index]?.DataClasses || [], false);
     });
   }
